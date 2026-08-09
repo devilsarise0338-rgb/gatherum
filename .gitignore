@@ -1,0 +1,18 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+
+# Environment files — never commit real secrets
+.env
+.env.local
+.env.*.local
+.env*
+_env
+*.env
+
+# Allow example/template files (contain no real values)
+!.env.example
+!_env.example

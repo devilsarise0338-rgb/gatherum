@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #FF5A5F;
+  --color-primary-hover: #E0484D;
+  --color-accent: #FFB400;
+  --color-bg-light: #F9F7F5;
+  --color-bg-dark: #1E1E1E;
+  --color-surface-light: #FFFFFF;
+  --color-surface-dark: #2A2A2A;
+  
+  --font-heading: 'Outfit', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-bg-light text-gray-900 font-body transition-colors duration-300;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-tight;
+  }
+}
+
