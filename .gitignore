@@ -16,3 +16,14 @@ _env
 # Allow example/template files (contain no real values)
 !.env.example
 !_env.example
+
+# Supabase local temp files
+supabase/.temp/
+
+# Dev/test artifacts
+fix_test.cjs
+full_code.md
+bun.lock
+openapi.json
+skills-lock.json
+test_rls.mjs
