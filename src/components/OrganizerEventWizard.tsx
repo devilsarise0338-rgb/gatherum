@@ -109,33 +109,38 @@ export default function OrganizerEventWizard() {
   const isPosterValid = formData.posterUrl.trim().length > 0;
   const isStep3Valid = isCapValid && isPosterValid;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isStep1Valid && isStep2Valid && isStep3Valid) {
-      const eventId = createEvent(formData);
-      
-      if (saveAsTemplate && templateName.trim() !== "") {
-        saveTemplate({
-          name: templateName,
-          title: formData.title,
-          description: formData.description,
-          location: formData.location,
-          department: formData.department,
-          category: formData.category,
-          capacity: formData.capacity,
-          posterUrl: formData.posterUrl
-        });
-        toast.success("Template saved!");
+      try {
+        const eventId = await createEvent(formData);
+        
+        if (saveAsTemplate && templateName.trim() !== "") {
+          await saveTemplate({
+            name: templateName,
+            title: formData.title,
+            description: formData.description,
+            location: formData.location,
+            department: formData.department,
+            category: formData.category,
+            capacity: formData.capacity,
+            posterUrl: formData.posterUrl
+          });
+          toast.success("Template saved!");
+        }
+        
+        toast.success("Event created successfully!");
+        navigate(`/organizer/events/${eventId}`);
+      } catch (err: any) {
+        console.error(err);
+        toast.error(err.message || "Failed to create event.");
       }
-      
-      toast.success("Event created successfully!");
-      navigate(`/organizer/events/${eventId}`);
     } else {
       toast.error("Please fill in all required fields.");
     }
   };
 
-  const handleQuickCreate = () => {
+  const handleQuickCreate = async () => {
     if (!isStep1Valid) {
       toast.error("Please provide at least a title and description.");
       return;
@@ -156,9 +161,14 @@ export default function OrganizerEventWizard() {
       posterUrl: formData.posterUrl || "https://images.unsplash.com/photo-1540575467063-178a50c2df87?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
     };
     
-    const eventId = createEvent(quickData);
-    toast.success("Quick Event created successfully!");
-    navigate(`/organizer/events/${eventId}`);
+    try {
+      const eventId = await createEvent(quickData);
+      toast.success("Quick Event created successfully!");
+      navigate(`/organizer/events/${eventId}`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to create event.");
+    }
   };
 
   return (
