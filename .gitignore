@@ -27,3 +27,4 @@ bun.lock
 openapi.json
 skills-lock.json
 test_rls.mjs
+.vercel
