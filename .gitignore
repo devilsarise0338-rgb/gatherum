@@ -23,6 +23,7 @@ supabase/.temp/
 # Dev/test artifacts
 fix_test.cjs
 full_code.md
+code_dump.md
 bun.lock
 openapi.json
 skills-lock.json
