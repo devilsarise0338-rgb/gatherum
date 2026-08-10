@@ -11,6 +11,7 @@ import TiltCard from "./TiltCard";
 import SkeletonLoader from "./SkeletonLoader";
 import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
+import { toast } from "react-hot-toast";
 
 export default function StudentDashboard() {
   const { events, registrations, announcements, feedbacks, addFeedback, getMyVolunteeringEvents, isLoading, error } = useData();
@@ -43,7 +44,8 @@ export default function StudentDashboard() {
 
   const waitlistedEvents = userRegs
     .filter(r => r.status === "waitlisted")
-    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }));
+    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
+    .filter(item => item.event);
 
   const volunteeringEvents = events.filter(e => volunteeringEventIds.includes(e.id)).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
@@ -57,18 +59,23 @@ export default function StudentDashboard() {
   const upcomingEventIds = upcomingEvents.map(u => u.event!.id);
   const relevantAnnouncements = announcements
     .filter(a => upcomingEventIds.includes(a.eventId))
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
     .slice(0, 3);
 
-  const handleFeedbackSubmit = (eventId: string) => {
+  const handleFeedbackSubmit = async (eventId: string) => {
     const data = feedbackState[eventId];
     if (data && data.rating > 0) {
-      addFeedback({
-        eventId,
-        studentEmail: user.email,
-        rating: data.rating,
-        comment: data.comment
-      });
+      try {
+        await addFeedback({
+          eventId,
+          studentEmail: user.email,
+          rating: data.rating,
+          comment: data.comment
+        });
+        toast.success("Feedback submitted!");
+      } catch(e: any) {
+        toast.error(e.message || "Failed to submit feedback");
+      }
     }
   };
 
@@ -128,8 +135,8 @@ export default function StudentDashboard() {
                   <div className="flex justify-between items-start mb-1">
                     <h4 className="font-bold text-lg text-gray-900 dark:text-white truncate pr-4">{event.title}</h4>
                     {reg.status === 'waitlisted' && (
-                      <span className="shrink-0 px-3 py-1 bg-accent/10 text-accent-darker dark:text-accent text-xs font-bold rounded-full" aria-label={`Waitlist position ${reg.waitlistPosition}`}>
-                        Waitlist #{reg.waitlistPosition}
+                      <span className="shrink-0 px-3 py-1 bg-accent/10 text-accent-darker dark:text-accent text-xs font-bold rounded-full">
+                        Waitlist
                       </span>
                     )}
                   </div>
@@ -271,8 +278,7 @@ export default function StudentDashboard() {
                     className="bg-white dark:bg-surface-dark p-4 rounded-2xl shadow-sm border border-blue-100/50 dark:border-blue-800/50"
                   >
                     <div className="text-xs text-blue-600 dark:text-blue-400 font-bold mb-1">{eventForAnn?.title}</div>
-                    <h3 className="font-bold text-gray-900 dark:text-white mb-2">{ann.title}</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{ann.content}</p>
+                    <p className="text-sm text-gray-900 dark:text-gray-100 line-clamp-3">{ann.message}</p>
                   </motion.div>
                 )
               })}

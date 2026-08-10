@@ -68,8 +68,12 @@ export default function PublicOrganizerPage() {
     ];
     
     organizerEvents.forEach(event => {
-      const start = new Date(event.startTime).toISOString().replace(/[-:]/g, '').split('.')[0] + "Z";
-      const end = new Date(event.endTime).toISOString().replace(/[-:]/g, '').split('.')[0] + "Z";
+      const dStart = new Date(event.startTime);
+      const dEnd = new Date(event.endTime);
+      if (isNaN(dStart.getTime()) || isNaN(dEnd.getTime())) return;
+      
+      const start = dStart.toISOString().replace(/[-:]/g, '').split('.')[0] + "Z";
+      const end = dEnd.toISOString().replace(/[-:]/g, '').split('.')[0] + "Z";
       
       lines.push("BEGIN:VEVENT");
       lines.push(`UID:${event.id}@gatherum.poornima.org`);
@@ -103,7 +107,7 @@ export default function PublicOrganizerPage() {
         url: window.location.href
       });
     } catch (err) {
-      navigator.clipboard.writeText(window.location.href);
+      await navigator.clipboard.writeText(window.location.href);
       toast.success("Link copied to clipboard");
     }
   };

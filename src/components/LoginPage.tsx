@@ -89,7 +89,13 @@ export default function LoginPage() {
 
   // Redirect when logged in
   useEffect(() => {
-    if (user) navigate(`/${user.role}`, { replace: true });
+    if (user) {
+      if (!user.profileCompleted) {
+        navigate("/complete-profile", { replace: true });
+      } else {
+        navigate(`/${user.role}`, { replace: true });
+      }
+    }
   }, [user, navigate]);
 
   const handleGoogleSignIn = async () => {
@@ -116,7 +122,7 @@ export default function LoginPage() {
     }
   };
 
-  const domainHint = settings.allowedEmailDomain
+  const domainHint = settings?.allowedEmailDomain
     ? `Use your ${settings.allowedEmailDomain} email`
     : "Enter your email address";
 
@@ -270,7 +276,7 @@ export default function LoginPage() {
                       autoFocus
                       className="w-full px-4 py-3 rounded-xl bg-white border border-gray-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"
                     />
-                    {settings.allowedEmailDomain && (
+                    {settings?.allowedEmailDomain && (
                       <p className="mt-1.5 text-xs text-gray-500 font-medium">
                         Only <span className="text-primary">{settings.allowedEmailDomain}</span> addresses are allowed.
                       </p>

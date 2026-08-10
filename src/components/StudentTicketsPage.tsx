@@ -9,6 +9,7 @@ import { pageTransition, cardHover } from "../utils/motion";
 import SkeletonLoader from "./SkeletonLoader";
 import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
+import toast from "react-hot-toast";
 
 export default function StudentTicketsPage() {
   const { events, registrations, isLoading, error } = useData();
@@ -23,8 +24,14 @@ export default function StudentTicketsPage() {
     .sort((a, b) => new Date(b.event!.startTime).getTime() - new Date(a.event!.startTime).getTime());
 
   const generateICS = (event: any) => {
-    const formatDate = (dateString: string) => {
-      const d = new Date(dateString);
+    const dStart = new Date(event.startTime);
+    const dEnd = new Date(event.endTime);
+    if (isNaN(dStart.getTime()) || isNaN(dEnd.getTime())) {
+      toast.error("Event dates are invalid for calendar export.");
+      return;
+    }
+
+    const formatDate = (d: Date) => {
       return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
     };
 
@@ -35,8 +42,8 @@ export default function StudentTicketsPage() {
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
       'BEGIN:VEVENT',
-      `DTSTART:${formatDate(event.startTime)}`,
-      `DTEND:${formatDate(event.endTime)}`,
+      `DTSTART:${formatDate(dStart)}`,
+      `DTEND:${formatDate(dEnd)}`,
       `SUMMARY:${escapeICS(event.title)}`,
       `DESCRIPTION:${escapeICS(event.description)}`,
       `LOCATION:${escapeICS(event.location)}`,

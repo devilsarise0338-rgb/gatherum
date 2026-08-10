@@ -15,6 +15,11 @@ export default function ProtectedRoute({ allowedRoles, skipProfileCheck }: Prote
     return <Navigate to="/login" replace />;
   }
 
+  // Gate: banned users are immediately signed out to /login.
+  if (user.isBanned) {
+    return <Navigate to="/login" replace />;
+  }
+
   // Gate: redirect to profile completion form if not done yet.
   if (!skipProfileCheck && !user.profileCompleted && location.pathname !== "/complete-profile") {
     return <Navigate to="/complete-profile" replace />;

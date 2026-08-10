@@ -81,7 +81,7 @@ export default function OrganizerManageEventPage() {
   }
 
   const eventRegsContext = registrations.filter(r => r.eventId === event.id);
-  const eventAnnouncements = announcements.filter(a => a.eventId === event.id).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const eventAnnouncements = announcements.filter(a => a.eventId === event.id).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   const eventFeedbacks = feedbacks.filter(f => f.eventId === event.id);
 
   const [liveRegs, setLiveRegs] = useState(eventRegsContext);
@@ -108,7 +108,7 @@ export default function OrganizerManageEventPage() {
               eventId: payload.new.event_id,
               studentId: payload.new.user_id,
               status: payload.new.status,
-              waitlistPosition: payload.new.waitlist_position,
+              waitlistPosition: undefined,
               ticketId: payload.new.ticket_id,
               attended: payload.new.attended
             }]);
@@ -119,7 +119,6 @@ export default function OrganizerManageEventPage() {
             setLiveRegs(prev => prev.map(r => r.id === payload.new.id ? {
               ...r,
               status: payload.new.status,
-              waitlistPosition: payload.new.waitlist_position,
               attended: payload.new.attended
             } : r));
           } else if (payload.eventType === 'DELETE') {
@@ -177,17 +176,20 @@ export default function OrganizerManageEventPage() {
     document.body.removeChild(link);
   };
 
-  const handleBroadcast = (e: React.FormEvent) => {
+  const handleBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!announcementTitle.trim() || !announcementContent.trim()) return;
-    addAnnouncement({
-      eventId: event.id,
-      title: announcementTitle,
-      content: announcementContent
-    });
-    setAnnouncementTitle("");
-    setAnnouncementContent("");
-    toast.success("Announcement broadcasted");
+    try {
+      await addAnnouncement({
+        eventId: event.id,
+        message: `${announcementTitle.trim()}: ${announcementContent.trim()}`
+      });
+      setAnnouncementTitle("");
+      setAnnouncementContent("");
+      toast.success("Announcement broadcasted");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send announcement");
+    }
   };
 
   const handleInviteVolunteer = async (e: React.FormEvent) => {
@@ -335,7 +337,7 @@ export default function OrganizerManageEventPage() {
                         </td>
                         <td className="py-3 px-4">
                           <button 
-                            onClick={() => removeRegistrant(reg.id)}
+                            onClick={async () => { try { await removeRegistrant(reg.id); } catch(e: any) { toast.error(e.message || 'Failed to remove'); } }}
                             className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                             title="Remove Registrant"
                           >
@@ -457,10 +459,10 @@ export default function OrganizerManageEventPage() {
                   eventAnnouncements.map(ann => (
                     <div key={ann.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-800">
                       <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-bold text-gray-900 dark:text-white">{ann.title}</h4>
-                        <span className="text-xs text-gray-500">{new Date(ann.timestamp).toLocaleString()}</span>
+                      <h4 className="font-bold text-gray-900 dark:text-white">{ann.message}</h4>
+                        <span className="text-xs text-gray-500">{new Date(ann.createdAt).toLocaleString()}</span>
                       </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">{ann.content}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-300">{ann.message}</p>
                     </div>
                   ))
                 )}

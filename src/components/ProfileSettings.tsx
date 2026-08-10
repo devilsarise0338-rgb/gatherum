@@ -24,6 +24,8 @@ export default function ProfileSettings() {
         setError(true);
         setLoading(false);
       });
+    } else {
+      setLoading(false);
     }
   }, [user]);
 

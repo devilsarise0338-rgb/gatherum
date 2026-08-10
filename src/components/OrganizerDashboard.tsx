@@ -146,7 +146,7 @@ export default function OrganizerDashboard() {
                                 <GripVertical className="w-5 h-5" />
                               </div>
                               <div>
-                                <h3 className="font-bold text-gray-900 dark:text-white">{template.name}</h3>
+                                <h3 className="font-bold text-gray-900 dark:text-white">{template.title}</h3>
                                 <p className="text-sm text-gray-500 truncate max-w-[200px]">{template.title}</p>
                               </div>
                             </div>

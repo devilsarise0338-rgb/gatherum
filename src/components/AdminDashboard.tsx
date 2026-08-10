@@ -16,8 +16,8 @@ export default function AdminDashboard() {
   // Settings State
   const [localSettings, setLocalSettings] = useState(settings);
 
-  const handleSaveSettings = () => {
-    updateSettings(localSettings);
+  const handleSaveSettings = async () => {
+    await updateSettings(localSettings);
     alert("Settings saved successfully.");
   };
 
@@ -122,7 +122,7 @@ export default function AdminDashboard() {
                         <div className="font-bold text-gray-900 dark:text-white truncate max-w-xs">{event.title}</div>
                         <div className="text-xs text-gray-500">{new Date(event.startTime).toLocaleDateString()}</div>
                       </td>
-                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{event.department}</td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{event.category}</td>
                       <td className="px-6 py-4">
                         {event.isUnpublished ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-xs font-bold">
@@ -136,16 +136,16 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-6 py-4 text-right space-x-2">
                         <button
-                          onClick={() => unpublishEvent(event.id, !event.isUnpublished)}
+                          onClick={async () => { try { await unpublishEvent(event.id, !event.isUnpublished); } catch(e: any) { alert(e.message); } }}
                           className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-lg transition-colors"
                         >
                           {event.isUnpublished ? "Publish" : "Unpublish"}
                         </button>
                         <button
-                          onClick={() => {
-                            if (window.confirm("Are you sure you want to delete this event permanently?")) {
-                              deleteEvent(event.id);
-                            }
+                          onClick={async () => {
+                              if (window.confirm("Are you sure you want to delete this event permanently?")) {
+                                try { await deleteEvent(event.id); } catch(e: any) { alert(e.message); }
+                              }
                           }}
                           className="px-3 py-1.5 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg transition-colors inline-flex items-center gap-1"
                         >
@@ -193,7 +193,7 @@ export default function AdminDashboard() {
                         <select
                           value={u.role}
                           disabled={u.email === currentUser?.email}
-                          onChange={(e) => updateUserRole(u.id!, e.target.value as Role)}
+                          onChange={async (e) => { try { await updateUserRole(u.id!, e.target.value as Role); } catch(err: any) { alert(err.message); } }}
                           className="bg-transparent border border-gray-200 dark:border-gray-700 rounded p-1 outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
                         >
                           <option value="student">Student</option>
@@ -214,7 +214,7 @@ export default function AdminDashboard() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
-                          onClick={() => toggleUserBan(u.id!, !!u.isBanned)}
+                          onClick={async () => { try { await toggleUserBan(u.id!, !!u.isBanned); } catch(err: any) { alert(err.message); } }}
                           disabled={u.email === currentUser?.email}
                           className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                         >

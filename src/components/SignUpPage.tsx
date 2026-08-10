@@ -85,7 +85,13 @@ export default function SignUpPage() {
   }, [authError, clearAuthError]);
 
   useEffect(() => {
-    if (user) navigate(`/${user.role}`, { replace: true });
+    if (user) {
+      if (!user.profileCompleted) {
+        navigate("/complete-profile", { replace: true });
+      } else {
+        navigate(`/${user.role}`, { replace: true });
+      }
+    }
   }, [user, navigate]);
 
   const handleGoogleSignUp = async () => {

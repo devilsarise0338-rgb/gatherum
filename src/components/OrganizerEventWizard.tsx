@@ -75,18 +75,15 @@ export default function OrganizerEventWizard() {
   const loadTemplate = (templateId: string) => {
     const t = templates.find(t => t.id === templateId);
     if (t) {
-      setFormData({
+      setFormData(prev => ({
+        ...prev,
         title: t.title,
         description: t.description,
-        startTime: "",
-        endTime: "",
-        location: t.location,
-        department: t.department,
         category: t.category,
         capacity: t.capacity,
         posterUrl: t.posterUrl
-      });
-      toast.success(`Loaded template: ${t.name}`);
+      }));
+      toast.success(`Loaded template: ${t.title}`);
     }
   };
 
@@ -102,8 +99,7 @@ export default function OrganizerEventWizard() {
   const isDateValid = formData.startTime !== "";
   const isEndTimeValid = formData.endTime !== "";
   const isLocValid = formData.location.trim().length > 0;
-  const isDeptValid = formData.department.trim().length > 0;
-  const isStep2Valid = isDateValid && isEndTimeValid && isLocValid && isDeptValid;
+  const isStep2Valid = isDateValid && isEndTimeValid && isLocValid;
 
   const isCapValid = formData.capacity > 0;
   const isPosterValid = formData.posterUrl.trim().length > 0;
@@ -117,11 +113,8 @@ export default function OrganizerEventWizard() {
         
         if (saveAsTemplate && templateName.trim() !== "") {
           await saveTemplate({
-            name: templateName,
             title: formData.title,
             description: formData.description,
-            location: formData.location,
-            department: formData.department,
             category: formData.category,
             capacity: formData.capacity,
             posterUrl: formData.posterUrl
@@ -156,7 +149,6 @@ export default function OrganizerEventWizard() {
       startTime: formData.startTime || tomorrowStr,
       endTime: formData.endTime || tomorrowStr + "T14:00",
       location: formData.location || "TBA",
-      department: formData.department || "General",
       capacity: formData.capacity || 100,
       posterUrl: formData.posterUrl || "https://images.unsplash.com/photo-1540575467063-178a50c2df87?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
     };
@@ -187,7 +179,7 @@ export default function OrganizerEventWizard() {
             >
               <option value="" disabled>Load from Template...</option>
               {templates.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <option key={t.id} value={t.id}>{t.title}</option>
               ))}
             </select>
           )}
@@ -326,19 +318,6 @@ export default function OrganizerEventWizard() {
                     placeholder="e.g., Main Quad"
                   />
                   <ValidCheck isValid={isLocValid} />
-                </div>
-
-                <div className="relative">
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Department/Organization</label>
-                  <input
-                    type="text"
-                    name="department"
-                    value={formData.department}
-                    onChange={handleInputChange}
-                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none pr-10"
-                    placeholder="e.g., Student Union"
-                  />
-                  <ValidCheck isValid={isDeptValid} />
                 </div>
 
                 <div className="flex justify-between pt-4">

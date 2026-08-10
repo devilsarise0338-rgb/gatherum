@@ -143,7 +143,7 @@ export default function EventDetailPage() {
   
   let userReg = null;
   if (user) {
-    userReg = registrations.find(r => r.eventId === event.id && r.studentId === user?.id);
+    userReg = registrations.find(r => r.eventId === event.id && r.studentId === user?.id && r.status !== 'cancelled' && r.status !== 'attended');
   }
 
   const performRegistration = async (action: () => Promise<void>) => {
@@ -374,7 +374,7 @@ export default function EventDetailPage() {
                         }`}>
                           {userReg.status !== 'waitlisted' && <CheckCircle2 className="w-5 h-5" aria-hidden="true" />}
                           {userReg.status === 'waitlisted' 
-                            ? `On Waitlist (Position #${userReg.waitlistPosition})` 
+                            ? 'On Waitlist' 
                             : 'You are registered!'}
                         </div>
                         <button 

@@ -34,7 +34,6 @@ export interface Registration {
   studentId: string;
   studentEmail?: string;
   status: "registered" | "waitlisted" | "cancelled" | "attended";
-  waitlistPosition?: number;
   ticketId?: string;
   attended?: boolean;
 }
@@ -49,11 +48,8 @@ export interface CheckInResult {
 export interface EventTemplate {
   id: string;
   organizerId: string;
-  name: string;
   title: string;
   description: string;
-  location: string;
-  department: string;
   category: EventCategory;
   capacity: number;
   posterUrl: string;
@@ -62,9 +58,8 @@ export interface EventTemplate {
 export interface Announcement {
   id: string;
   eventId: string;
-  title: string;
-  content: string;
-  timestamp: string;
+  message: string;
+  createdAt: string;
 }
 
 export interface Feedback {
@@ -91,7 +86,7 @@ interface DataContextType {
   createEvent: (eventData: Omit<CampusEvent, "id" | "registeredCount" | "waitlistCount">) => Promise<string>;
   saveTemplate: (template: Omit<EventTemplate, "id" | "organizerId">) => Promise<void>;
   removeRegistrant: (regId: string) => Promise<void>;
-  addAnnouncement: (announcement: Omit<Announcement, "id" | "timestamp">) => Promise<void>;
+  addAnnouncement: (announcement: Omit<Announcement, "id" | "createdAt">) => Promise<void>;
   addFeedback: (feedback: Omit<Feedback, "id" | "studentId">) => Promise<void>;
   deleteEvent: (eventId: string) => Promise<void>;
   unpublishEvent: (eventId: string, isUnpublished: boolean) => Promise<void>;

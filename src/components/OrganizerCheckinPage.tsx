@@ -52,7 +52,6 @@ export default function OrganizerCheckinPage() {
                 eventId: payload.new.event_id,
                 studentId: payload.new.user_id,
                 status: payload.new.status,
-                waitlistPosition: payload.new.waitlist_position,
                 ticketId: payload.new.ticket_id,
                 attended: payload.new.attended
               }]);
@@ -62,7 +61,6 @@ export default function OrganizerCheckinPage() {
               setRegistrations(prev => prev.map(r => r.id === payload.new.id ? {
                 ...r,
                 status: payload.new.status,
-                waitlistPosition: payload.new.waitlist_position,
                 attended: payload.new.attended
               } : r));
             } else if (payload.eventType === 'DELETE') {
@@ -83,11 +81,11 @@ export default function OrganizerCheckinPage() {
   }, [eventId]);
   // We'll search across all registrations.
   
-  const handleScan = (detectedCodes: any[]) => {
+  const handleScan = async (detectedCodes: any[]) => {
     if (detectedCodes.length > 0) {
       const qrValue = detectedCodes[0].rawValue;
       if (qrValue) {
-        processCheckIn(qrValue);
+        await processCheckIn(qrValue);
       }
     }
   };
@@ -112,7 +110,7 @@ export default function OrganizerCheckinPage() {
     }, 3000);
   };
 
-  const handleManualSearch = (e: React.FormEvent) => {
+  const handleManualSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     
@@ -120,8 +118,8 @@ export default function OrganizerCheckinPage() {
       r.ticketId === searchQuery || (r.studentEmail || "").toLowerCase().includes(searchQuery.toLowerCase())
     );
     
-    if (reg && reg.ticketId) {
-      processCheckIn(reg.ticketId);
+    if (reg && reg.ticketId && reg.status !== 'cancelled') {
+      await processCheckIn(reg.ticketId);
     } else {
       setScanResult({
         success: false,
@@ -133,7 +131,7 @@ export default function OrganizerCheckinPage() {
   };
 
   const attendedCount = registrations.filter(r => r.attended).length;
-  const totalCount = registrations.length;
+  const totalCount = registrations.filter(r => r.status !== 'cancelled').length;
 
   return (
     <div className="fixed inset-0 z-[100] bg-bg-light dark:bg-bg-dark text-gray-900 dark:text-white flex flex-col overflow-y-auto">

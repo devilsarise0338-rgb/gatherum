@@ -14,7 +14,7 @@ export const EventService = {
       startTime: d.start_time,
       endTime: d.end_time,
       location: d.location,
-      department: d.department,
+      department: '',
       category: d.category,
       capacity: d.capacity,
       registeredCount: d.registered_count || 0,
@@ -26,7 +26,7 @@ export const EventService = {
   },
 
   getEventById: async (eventId: string): Promise<CampusEvent | null> => {
-    const { data, error } = await supabase.from('events').select('id, title, description, start_time, end_time, location, department, category, capacity, registered_count, waitlist_count, poster_url, is_unpublished, organizer_id').eq('id', eventId).single();
+    const { data, error } = await supabase.from('events').select('id, title, description, start_time, end_time, location, category, capacity, registered_count, waitlist_count, poster_url, is_unpublished, organizer_id').eq('id', eventId).single();
     if (error) {
       if (error.code === 'PGRST116') return null; // Not found
       throw error;
@@ -38,7 +38,7 @@ export const EventService = {
       startTime: data.start_time,
       endTime: data.end_time,
       location: data.location,
-      department: data.department,
+      department: '',
       category: data.category,
       capacity: data.capacity,
       registeredCount: data.registered_count || 0,
@@ -59,11 +59,10 @@ export const EventService = {
       start_time: eventData.startTime,
       end_time: eventData.endTime,
       location: eventData.location,
-      department: eventData.department,
       category: eventData.category,
       capacity: eventData.capacity,
       poster_url: eventData.posterUrl,
-      is_unpublished: eventData.isUnpublished,
+      is_unpublished: eventData.isUnpublished ?? true,
       organizer_id: userData.user.id
     };
 
@@ -78,7 +77,6 @@ export const EventService = {
       event_id,
       user_id,
       status,
-      waitlist_position,
       ticket_id,
       attended,
       profiles:user_id(email)
@@ -90,7 +88,6 @@ export const EventService = {
       studentId: d.user_id,
       studentEmail: d.profiles?.email,
       status: d.status,
-      waitlistPosition: d.waitlist_position,
       ticketId: d.ticket_id,
       attended: d.attended
     })) as Registration[];
@@ -117,7 +114,6 @@ export const RegistrationService = {
       studentId: (d as any).user_id,
       studentEmail: (d as any).profiles?.email,
       status: d.status,
-      waitlistPosition: d.waitlist_position,
       ticketId: d.ticket_id,
       attended: d.attended
     })) as Registration[];
@@ -131,7 +127,6 @@ export const RegistrationService = {
       studentId: (d as any).user_id,
       studentEmail: (d as any).profiles?.email,
       status: d.status,
-      waitlistPosition: d.waitlist_position,
       ticketId: d.ticket_id,
       attended: d.attended
     })) as Registration[];
@@ -199,9 +194,8 @@ export const UserCommunicationService = {
     return data.map(d => ({
       id: d.id,
       eventId: d.event_id,
-      title: d.title,
-      content: d.content,
-      timestamp: d.timestamp
+      message: d.message,
+      createdAt: d.created_at
     }));
   },
   
@@ -218,11 +212,13 @@ export const UserCommunicationService = {
     }));
   },
 
-  addAnnouncement: async (announcement: Omit<Announcement, "id" | "timestamp">): Promise<void> => {
+  addAnnouncement: async (announcement: Omit<Announcement, "id" | "createdAt">): Promise<void> => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error("Not authenticated");
     const { error } = await supabase.from('announcements').insert({
       event_id: announcement.eventId,
-      title: announcement.title,
-      content: announcement.content
+      organizer_id: userData.user.id,
+      message: announcement.message
     });
     if (error) throw error;
   },
@@ -248,11 +244,8 @@ export const OrganizerTemplateService = {
     return data.map(d => ({
       id: d.id,
       organizerId: d.organizer_id,
-      name: d.name,
       title: d.title,
       description: d.description,
-      location: d.location,
-      department: d.department,
       category: d.category,
       capacity: d.capacity,
       posterUrl: d.poster_url
@@ -265,11 +258,8 @@ export const OrganizerTemplateService = {
 
     const { error } = await supabase.from('event_templates').insert({
       organizer_id: userData.user.id,
-      name: template.name,
       title: template.title,
       description: template.description,
-      location: template.location,
-      department: template.department,
       category: template.category,
       capacity: template.capacity,
       poster_url: template.posterUrl
