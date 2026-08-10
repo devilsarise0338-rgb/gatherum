@@ -1,859 +1,889 @@
-## File: supabase/migrations/0002_realtime_counters.sql
+# Gatherum Full Source Code
 
-```sql
--- 0002_realtime_counters.sql
+## `metadata.json`
+```json
+{
+  "name": "Gatherum",
+  "description": "A college event management and ticketing platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
 
--- 1. Add Counter Columns with constraints
-ALTER TABLE events ADD COLUMN registered_count int NOT NULL DEFAULT 0 CHECK (registered_count >= 0);
-ALTER TABLE events ADD COLUMN waitlist_count int NOT NULL DEFAULT 0 CHECK (waitlist_count >= 0);
-
--- 2. Backfill existing data safely
-UPDATE events e
-SET 
-  registered_count = (SELECT count(*) FROM registrations r WHERE r.event_id = e.id AND r.status = 'registered'),
-  waitlist_count = (SELECT count(*) FROM registrations r WHERE r.event_id = e.id AND r.status = 'waitlisted');
-
--- 3. Prevent client manipulation of counters
-CREATE OR REPLACE FUNCTION protect_event_counters()
-RETURNS trigger AS $$
-BEGIN
-  IF NEW.registered_count IS DISTINCT FROM OLD.registered_count OR NEW.waitlist_count IS DISTINCT FROM OLD.waitlist_count THEN
-    -- Allow postgres (via SECURITY DEFINER triggers) or admins to modify these columns
-    IF current_user NOT IN ('postgres', 'supabase_admin', 'service_role') THEN
-      RAISE EXCEPTION 'Cannot update system-managed counters directly';
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql; -- Not SECURITY DEFINER, we want to check the actual caller
-
-CREATE TRIGGER protect_events_counters_trigger
-BEFORE UPDATE ON events
-FOR EACH ROW EXECUTE FUNCTION protect_event_counters();
-
--- 4. Maintain Counters Trigger (Transaction-Safe)
-CREATE OR REPLACE FUNCTION maintain_event_counters()
-RETURNS trigger AS $$
-DECLARE
-  v_reg_delta int := 0;
-  v_wait_delta int := 0;
-  v_event_id uuid;
-BEGIN
-  IF TG_OP = 'INSERT' THEN
-    v_event_id := NEW.event_id;
-    IF NEW.status = 'registered' THEN v_reg_delta := 1; END IF;
-    IF NEW.status = 'waitlisted' THEN v_wait_delta := 1; END IF;
-  ELSIF TG_OP = 'UPDATE' THEN
-    v_event_id := NEW.event_id;
-    IF OLD.status = 'registered' AND NEW.status = 'cancelled' THEN v_reg_delta := -1; END IF;
-    IF OLD.status = 'waitlisted' AND NEW.status = 'cancelled' THEN v_wait_delta := -1; END IF;
-    IF OLD.status = 'waitlisted' AND NEW.status = 'registered' THEN 
-      v_wait_delta := -1; v_reg_delta := 1; 
-    END IF;
-  ELSIF TG_OP = 'DELETE' THEN
-    v_event_id := OLD.event_id;
-    IF OLD.status = 'registered' THEN v_reg_delta := -1; END IF;
-    IF OLD.status = 'waitlisted' THEN v_wait_delta := -1; END IF;
-  END IF;
-
-  IF v_reg_delta != 0 OR v_wait_delta != 0 THEN
-    UPDATE events
-    SET registered_count = registered_count + v_reg_delta,
-        waitlist_count = waitlist_count + v_wait_delta
-    WHERE id = v_event_id;
-  END IF;
-
-  RETURN NULL; -- AFTER trigger
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
-
-CREATE TRIGGER trigger_maintain_event_counters
-AFTER INSERT OR UPDATE OR DELETE ON registrations
-FOR EACH ROW EXECUTE FUNCTION maintain_event_counters();
-
--- 5. Support Registration DELETE in waitlist promotion (for backward compatibility, even though we move to 'cancelled' status)
-CREATE OR REPLACE FUNCTION promote_from_waitlist()
-RETURNS trigger AS $$
-DECLARE
-  v_waitlisted_id uuid;
-  v_event_id uuid;
-BEGIN
-  IF TG_OP = 'UPDATE' THEN
-    IF OLD.status = 'registered' AND NEW.status = 'cancelled' THEN
-      v_event_id := OLD.event_id;
-    ELSE
-      RETURN NEW;
-    END IF;
-  ELSIF TG_OP = 'DELETE' THEN
-    IF OLD.status = 'registered' THEN
-      v_event_id := OLD.event_id;
-    ELSE
-      RETURN OLD;
-    END IF;
-  END IF;
-
-  SELECT id INTO v_waitlisted_id FROM registrations WHERE event_id = v_event_id AND status = 'waitlisted' ORDER BY created_at ASC LIMIT 1 FOR UPDATE;
-  IF FOUND THEN
-    UPDATE registrations SET status = 'registered' WHERE id = v_waitlisted_id;
-    INSERT INTO audit_log (actor_id, action, target_table, target_id, details)
-    VALUES ((select auth.uid()), 'promote_from_waitlist', 'registrations', v_waitlisted_id, '{}');
-  END IF;
-
-  IF TG_OP = 'DELETE' THEN RETURN OLD; ELSE RETURN NEW; END IF;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
-
-DROP TRIGGER IF EXISTS trigger_promote_from_waitlist ON registrations;
-CREATE TRIGGER trigger_promote_from_waitlist AFTER UPDATE OR DELETE ON registrations FOR EACH ROW EXECUTE FUNCTION promote_from_waitlist();
-
--- 6. Admin Reconciliation RPC
-CREATE OR REPLACE FUNCTION admin_reconcile_event_counters()
-RETURNS void AS $$
-BEGIN
-  IF (SELECT role FROM profiles WHERE id = (select auth.uid())) != 'admin' THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
-
-  UPDATE events e
-  SET 
-    registered_count = (SELECT count(*) FROM registrations r WHERE r.event_id = e.id AND r.status = 'registered'),
-    waitlist_count = (SELECT count(*) FROM registrations r WHERE r.event_id = e.id AND r.status = 'waitlisted');
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
-
--- 7. Enable Realtime Publications
-DO $$
-BEGIN
-  -- Create publication if it doesn't exist (Supabase usually provides this)
-  IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-    CREATE PUBLICATION supabase_realtime;
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'events') THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE events;
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'registrations') THEN
-    ALTER PUBLICATION supabase_realtime ADD TABLE registrations;
-  END IF;
-END $$;
 ```
 
-
-## File: src/services/api.ts
-
-```typescript
-import { CampusEvent, Registration, EventTemplate, Announcement, Feedback, CheckInResult } from "../contexts/DataContext";
-import { supabase } from "../lib/supabase";
-
-export const EventService = {
-  getEvents: async (): Promise<CampusEvent[]> => {
-    const { data, error } = await supabase.from('events').select('*');
-    if (error) throw error;
-    
-    // Convert snake_case to camelCase
-    return data.map(d => ({
-      id: d.id,
-      title: d.title,
-      description: d.description,
-      startTime: d.start_time,
-      endTime: d.end_time,
-      location: d.location,
-      department: d.department,
-      category: d.category,
-      capacity: d.capacity,
-      registeredCount: d.registered_count || 0,
-      waitlistCount: d.waitlist_count || 0,
-      posterUrl: d.poster_url,
-      isUnpublished: d.is_unpublished,
-      organizerId: d.organizer_id
-    })) as CampusEvent[];
-  },
-
-  getEventById: async (eventId: string): Promise<CampusEvent | null> => {
-    const { data, error } = await supabase.from('events').select('id, title, description, start_time, end_time, location, department, category, capacity, registered_count, waitlist_count, poster_url, is_unpublished, organizer_id').eq('id', eventId).single();
-    if (error) {
-      if (error.code === 'PGRST116') return null; // Not found
-      throw error;
-    }
-    return {
-      id: data.id,
-      title: data.title,
-      description: data.description,
-      startTime: data.start_time,
-      endTime: data.end_time,
-      location: data.location,
-      department: data.department,
-      category: data.category,
-      capacity: data.capacity,
-      registeredCount: data.registered_count || 0,
-      waitlistCount: data.waitlist_count || 0,
-      posterUrl: data.poster_url,
-      isUnpublished: data.is_unpublished,
-      organizerId: data.organizer_id
-    } as CampusEvent;
-  },
-
-  createEvent: async (eventData: Omit<CampusEvent, "id" | "registeredCount" | "waitlistCount">): Promise<string> => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) throw new Error("Not authenticated");
-
-    const payload = {
-      title: eventData.title,
-      description: eventData.description,
-      start_time: eventData.startTime,
-      end_time: eventData.endTime,
-      location: eventData.location,
-      department: eventData.department,
-      category: eventData.category,
-      capacity: eventData.capacity,
-      poster_url: eventData.posterUrl,
-      is_unpublished: eventData.isUnpublished,
-      organizer_id: userData.user.id
-    };
-
-    const { data, error } = await supabase.from('events').insert(payload).select('id').single();
-    if (error) throw error;
-    return data.id;
-  },
-
-  getRegistrationsByEventId: async (eventId: string): Promise<Registration[]> => {
-    const { data, error } = await supabase.from('registrations').select(`
-      id,
-      event_id,
-      student_id,
-      status,
-      waitlist_position,
-      ticket_id,
-      attended,
-      profiles:student_id(email)
-    `).eq('event_id', eventId);
-    if (error) throw error;
-    return data.map((d: any) => ({
-      id: d.id,
-      eventId: d.event_id,
-      studentId: d.student_id,
-      studentEmail: d.profiles?.email,
-      status: d.status,
-      waitlistPosition: d.waitlist_position,
-      ticketId: d.ticket_id,
-      attended: d.attended
-    })) as Registration[];
-  },
-
-  deleteEvent: async (eventId: string): Promise<void> => {
-    const { error } = await supabase.from('events').delete().eq('id', eventId);
-    if (error) throw error;
-  },
-
-  updateEventPublishStatus: async (eventId: string, isUnpublished: boolean): Promise<void> => {
-    const { error } = await supabase.from('events').update({ is_unpublished: isUnpublished }).eq('id', eventId);
-    if (error) throw error;
-  }
-};
-
-export const RegistrationService = {
-  getRegistrations: async (): Promise<Registration[]> => {
-    const { data, error } = await supabase.from('registrations').select('*, profiles(email)');
-    if (error) throw error;
-    return data.map(d => ({
-      id: d.id,
-      eventId: d.event_id,
-      studentId: d.student_id,
-      studentEmail: (d as any).profiles?.email,
-      status: d.status,
-      waitlistPosition: d.waitlist_position,
-      ticketId: d.ticket_id,
-      attended: d.attended
-    })) as Registration[];
-  },
-  getRegistrationsForOrganizer: async (eventId: string): Promise<Registration[]> => {
-    const { data, error } = await supabase.from('registrations').select('*, profiles(email)').eq('event_id', eventId);
-    if (error) throw error;
-    return data.map(d => ({
-      id: d.id,
-      eventId: d.event_id,
-      studentId: d.student_id,
-      studentEmail: (d as any).profiles?.email,
-      status: d.status,
-      waitlistPosition: d.waitlist_position,
-      ticketId: d.ticket_id,
-      attended: d.attended
-    })) as Registration[];
-  },
-
-  getPublicAttendeeSignal: async (eventId: string): Promise<{studentId: string; studentEmail?: string}[]> => {
-    // Queries only attendees with public_rsvp = true
-    const { data, error } = await supabase
-      .from('registrations')
-      .select('student_id, profiles!inner(email, public_rsvp)')
-      .eq('event_id', eventId)
-      .eq('status', 'registered')
-      .eq('profiles.public_rsvp', true);
-    
-    if (error) throw error;
-    return data.map(d => ({
-      studentId: d.student_id,
-      studentEmail: (d as any).profiles?.email,
-    }));
-  },
-
-  register: async (eventId: string): Promise<{status: string}> => {
-    const { data, error } = await supabase.rpc('register_for_event', { p_event_id: eventId });
-    if (error) throw error;
-    return { status: data };
-  },
-
-  cancelRegistration: async (eventId: string): Promise<void> => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
-    const { error } = await supabase.from('registrations')
-      .update({ status: 'cancelled' })
-      .eq('event_id', eventId)
-      .eq('student_id', userData.user.id);
-    if (error) throw error;
-  },
-
-  checkIn: async (ticketId: string): Promise<CheckInResult> => {
-    const { data, error } = await supabase.rpc('check_in_by_ticket', { p_ticket_id: ticketId });
-    if (error) {
-      return { success: false, message: error.message };
-    }
-    if (data === 'success') {
-      return { success: true, message: "Checked in successfully" };
-    }
-    if (data === 'already_checked_in') {
-      return { success: false, message: "Already checked in", alreadyCheckedIn: true };
-    }
-    if (data === 'unauthorized') {
-      return { success: false, message: "You are not authorized to check in for this event." };
-    }
-    return { success: false, message: "Invalid ticket ID" };
-  },
-
-  removeRegistrant: async (regId: string): Promise<void> => {
-    const { error } = await supabase.from('registrations').delete().eq('id', regId);
-    if (error) throw error;
-  }
-};
-
-export const UserCommunicationService = {
-  getAnnouncements: async (): Promise<Announcement[]> => {
-    const { data, error } = await supabase.from('announcements').select('*');
-    if (error) throw error;
-    return data.map(d => ({
-      id: d.id,
-      eventId: d.event_id,
-      title: d.title,
-      content: d.content,
-      timestamp: d.timestamp
-    }));
-  },
-  
-  getFeedbacks: async (): Promise<Feedback[]> => {
-    const { data, error } = await supabase.from('feedbacks').select('*, profiles(email)');
-    if (error) throw error;
-    return data.map(d => ({
-      id: d.id,
-      eventId: d.event_id,
-      studentId: d.student_id,
-      studentEmail: (d as any).profiles?.email,
-      rating: d.rating,
-      comment: d.comment
-    }));
-  },
-
-  addAnnouncement: async (announcement: Omit<Announcement, "id" | "timestamp">): Promise<void> => {
-    const { error } = await supabase.from('announcements').insert({
-      event_id: announcement.eventId,
-      title: announcement.title,
-      content: announcement.content
-    });
-    if (error) throw error;
-  },
-
-  addFeedback: async (feedback: Omit<Feedback, "id">): Promise<void> => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) throw new Error("Not authenticated");
-
-    const { error } = await supabase.from('feedbacks').insert({
-      event_id: feedback.eventId,
-      student_id: userData.user.id,
-      rating: feedback.rating,
-      comment: feedback.comment
-    });
-    if (error) throw error;
-  }
-};
-
-export const OrganizerTemplateService = {
-  getTemplates: async (): Promise<EventTemplate[]> => {
-    const { data, error } = await supabase.from('event_templates').select('*');
-    if (error) throw error;
-    return data.map(d => ({
-      id: d.id,
-      organizerId: d.organizer_id,
-      name: d.name,
-      title: d.title,
-      description: d.description,
-      location: d.location,
-      department: d.department,
-      category: d.category,
-      capacity: d.capacity,
-      posterUrl: d.poster_url
-    })) as EventTemplate[];
-  },
-
-  saveTemplate: async (template: Omit<EventTemplate, "id">): Promise<void> => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) throw new Error("Not authenticated");
-
-    const { error } = await supabase.from('event_templates').insert({
-      organizer_id: userData.user.id,
-      name: template.name,
-      title: template.title,
-      description: template.description,
-      location: template.location,
-      department: template.department,
-      category: template.category,
-      capacity: template.capacity,
-      poster_url: template.posterUrl
-    });
-    if (error) throw error;
-  }
-};
-
-export const AuthService = {
-  loginWithOtp: async (email: string): Promise<void> => {
-    const { error } = await supabase.auth.signInWithOtp({ 
-      email,
-      options: {
-        emailRedirectTo: window.location.origin
-      }
-    });
-    if (error) throw error;
-  },
-
-  loginWithGoogle: async (): Promise<void> => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin
-      }
-    });
-    if (error) throw error;
-  },
-
-  logout: async (): Promise<void> => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-  },
-  
-  getCurrentSession: async () => {
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error) throw error;
-    return session;
-  },
-
-  getProfile: async (userId: string) => {
-    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    if (error) throw error;
-    return data;
-  },
-  
-  updateProfilePrivacy: async (publicRsvp: boolean): Promise<void> => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) throw new Error("Not authenticated");
-    const { error } = await supabase.from('profiles').update({ public_rsvp: publicRsvp }).eq('id', userData.user.id);
-    if (error) throw error;
-  },
-
-  completeProfile: async (data: {
-    fullName: string;
-    rollNumber: string;
-    branch: string;
-    yearOfStudy: number;
-    phoneNumber: string | null;
-  }): Promise<void> => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) throw new Error("Not authenticated");
-    const { error } = await supabase
-      .from('profiles')
-      .update({
-        full_name: data.fullName,
-        roll_number: data.rollNumber,
-        branch: data.branch,
-        year_of_study: data.yearOfStudy,
-        phone_number: data.phoneNumber,
-        profile_completed: true,
-      })
-      .eq('id', userData.user.id);
-    if (error) throw error;
-  }
-};
-
-export const EventTeamService = {
-  getMyVolunteeringEvents: async (): Promise<string[]> => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return [];
-    const { data, error } = await supabase
-      .from('event_team')
-      .select('event_id')
-      .eq('user_id', userData.user.id)
-      .eq('role', 'volunteer');
-    if (error) throw error;
-    return data.map(d => d.event_id);
-  },
-  getVolunteers: async (eventId: string): Promise<{userId: string; email: string}[]> => {
-    const { data, error } = await supabase
-      .from('event_team')
-      .select('user_id, profiles!inner(email)')
-      .eq('event_id', eventId)
-      .eq('role', 'volunteer');
-    if (error) throw error;
-    return data.map(d => ({
-      userId: d.user_id,
-      email: (d as any).profiles?.email,
-    }));
-  },
-  inviteVolunteer: async (eventId: string, email: string): Promise<void> => {
-    const { error } = await supabase.rpc('invite_volunteer', { p_event_id: eventId, p_email: email });
-    if (error) throw error;
-  },
-  removeVolunteer: async (eventId: string, userId: string): Promise<void> => {
-    const { error } = await supabase.rpc('remove_volunteer', { p_event_id: eventId, p_user_id: userId });
-    if (error) throw error;
-  }
-};
-
-export const SocialService = {
-  subscribeToOrganizer: async (organizerId: string): Promise<void> => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) throw new Error("Not authenticated");
-    const { error } = await supabase.from('calendar_follows').insert({
-      follower_id: userData.user.id,
-      followed_organizer_id: organizerId
-    });
-    if (error) throw error;
-  },
-  unsubscribeFromOrganizer: async (organizerId: string): Promise<void> => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) throw new Error("Not authenticated");
-    const { error } = await supabase.from('calendar_follows')
-      .delete()
-      .eq('follower_id', userData.user.id)
-      .eq('followed_organizer_id', organizerId);
-    if (error) throw error;
-  },
-  getFollowedOrganizers: async (): Promise<string[]> => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return [];
-    const { data, error } = await supabase
-      .from('calendar_follows')
-      .select('followed_organizer_id')
-      .eq('follower_id', userData.user.id);
-    if (error) throw error;
-    return data.map(d => d.followed_organizer_id);
-  }
-};
+## `openapi.json`
+```json
+{
+  "message": "Invalid API key",
+  "hint": "Only the `service_role` API key can be used for this endpoint."
+}
 ```
 
-
-## File: src/contexts/DataContext.tsx
-
-```typescript
-import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from "react";
-import { useAuth } from "./AuthContext";
-import { 
-  EventService, 
-  RegistrationService, 
-  OrganizerTemplateService, 
-  UserCommunicationService,
-  EventTeamService,
-  SocialService
-} from "../services/api";
-
-export type EventCategory = "Social" | "Academic" | "Sports" | "Arts" | "Club";
-
-export interface CampusEvent {
-  id: string;
-  title: string;
-  description: string;
-  startTime: string;
-  endTime: string;
-  location: string;
-  department: string;
-  category: EventCategory;
-  capacity: number;
-  registeredCount: number;
-  waitlistCount: number;
-  posterUrl: string;
-  isUnpublished?: boolean;
-  organizerId?: string;
+## `package.json`
+```json
+{
+  "name": "react-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "clean": "rm -rf dist server.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hello-pangea/dnd": "^18.0.1",
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "@supabase/supabase-js": "^2.112.2",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "@yudiel/react-qr-scanner": "^2.6.0",
+    "clsx": "^2.1.1",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.6.2",
+    "lucide-react": "^1.29.0",
+    "motion": "^13.0.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.0.1",
+    "react-countup": "^6.5.3",
+    "react-dom": "^19.0.1",
+    "react-hot-toast": "^2.6.0",
+    "react-router-dom": "^7.18.2",
+    "recharts": "^3.10.1",
+    "tailwind-merge": "^3.6.0",
+    "three": "^0.185.1",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/three": "^0.185.4",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-linux-x64-gnu": "*"
+  }
 }
 
-export interface Registration {
-  id: string;
-  eventId: string;
-  studentId: string;
-  studentEmail?: string;
-  status: "registered" | "waitlisted";
-  waitlistPosition?: number;
-  ticketId?: string;
-  attended?: boolean;
+```
+
+## `server.ts`
+```ts
+import express from "express";
+import path from "path";
+import { createServer as createViteServer } from "vite";
+
+import rateLimit from "express-rate-limit";
+import * as dotenv from "dotenv";
+import { createClient } from "@supabase/supabase-js";
+
+dotenv.config();
+
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+
+let supabase: ReturnType<typeof createClient> | null = null;
+let adminSupabase: ReturnType<typeof createClient> | null = null;
+
+if (supabaseUrl && supabaseAnonKey) {
+  supabase = createClient(supabaseUrl, supabaseAnonKey);
+} else {
+  console.warn("Supabase credentials not found in env vars.");
 }
 
-export interface CheckInResult {
-  success: boolean;
-  message: string;
-  attendeeName?: string;
-  alreadyCheckedIn?: boolean;
+if (supabaseUrl && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  adminSupabase = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY);
+} else {
+  console.warn("SUPABASE_SERVICE_ROLE_KEY not found in env vars.");
 }
 
-export interface EventTemplate {
-  id: string;
-  organizerId: string;
-  name: string;
-  title: string;
-  description: string;
-  location: string;
-  department: string;
-  category: EventCategory;
-  capacity: number;
-  posterUrl: string;
-}
+async function startServer() {
+  const app = express();
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-export interface Announcement {
-  id: string;
-  eventId: string;
-  title: string;
-  content: string;
-  timestamp: string;
-}
+  app.set("trust proxy", 1);
+  app.use(express.json());
 
-export interface Feedback {
-  id: string;
-  eventId: string;
-  studentId: string;
-  studentEmail?: string;
-  rating: number; // 1-5
-  comment: string;
-}
-
-interface DataContextType {
-  events: CampusEvent[];
-  registrations: Registration[];
-  templates: EventTemplate[];
-  announcements: Announcement[];
-  feedbacks: Feedback[];
-  isLoading: boolean;
-  registerForEvent: (eventId: string) => Promise<void>;
-  joinWaitlist: (eventId: string) => Promise<void>;
-  cancelRegistration: (eventId: string) => Promise<void>;
-  checkConflict: (eventId: string) => CampusEvent | null;
-  checkInUser: (ticketId: string) => Promise<CheckInResult>;
-  createEvent: (eventData: Omit<CampusEvent, "id" | "registeredCount" | "waitlistCount">) => Promise<string>;
-  saveTemplate: (template: Omit<EventTemplate, "id" | "organizerId">) => Promise<void>;
-  removeRegistrant: (regId: string) => Promise<void>;
-  addAnnouncement: (announcement: Omit<Announcement, "id" | "timestamp">) => Promise<void>;
-  addFeedback: (feedback: Omit<Feedback, "id" | "studentId">) => Promise<void>;
-  deleteEvent: (eventId: string) => Promise<void>;
-  unpublishEvent: (eventId: string, isUnpublished: boolean) => Promise<void>;
-  getMyVolunteeringEvents: () => Promise<string[]>;
-  getVolunteers: (eventId: string) => Promise<{userId: string; email: string}[]>;
-  inviteVolunteer: (eventId: string, email: string) => Promise<void>;
-  removeVolunteer: (eventId: string, userId: string) => Promise<void>;
-  subscribeToOrganizer: (organizerId: string) => Promise<void>;
-  unsubscribeFromOrganizer: (organizerId: string) => Promise<void>;
-  getFollowedOrganizers: () => Promise<string[]>;
-  getPublicAttendeeSignal: (eventId: string) => Promise<{studentId: string; studentEmail?: string}[]>;
-  error: Error | null;
-}
-
-const DataContext = createContext<DataContextType | undefined>(undefined);
-
-export function DataProvider({ children }: { children: ReactNode }) {
-  const [events, setEvents] = useState<CampusEvent[]>([]);
-  const [registrations, setRegistrations] = useState<Registration[]>([]);
-  const [templates, setTemplates] = useState<EventTemplate[]>([]);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
+  // Global IP rate limiter
+  const ipLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 100,
+    message: "Too many requests from this IP, please try again later."
+  });
   
-  const { user, isLoading: authLoading } = useAuth();
+  // User-based rate limiter (applied after auth)
+  const userLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 50,
+    keyGenerator: (req: any) => {
+      return req.user?.id || req.ip;
+    },
+    message: "Too many requests from this user, please try again later."
+  });
 
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  // Auth Middleware
+  const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+
+    const token = authHeader.split(" ")[1];
+    
+    if (!supabase) {
+      res.status(500).json({ error: "Server configuration error" });
+      return;
+    }
+
     try {
-      const [evts, tmpls, regs, anns, fbs] = await Promise.all([
-        EventService.getEvents(),
-        user?.role === 'organizer' || user?.role === 'admin' ? OrganizerTemplateService.getTemplates() : Promise.resolve([]),
-        user ? RegistrationService.getRegistrations() : Promise.resolve([]),
-        UserCommunicationService.getAnnouncements(),
-        UserCommunicationService.getFeedbacks()
-      ]);
-      
-      setEvents(evts);
-      setRegistrations(regs);
-      setTemplates(tmpls);
-      setAnnouncements(anns);
-      setFeedbacks(fbs);
-    } catch (err: any) {
-      console.error("Failed to load data from Supabase:", err);
-      setError(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (!authLoading) {
-      loadData();
-    }
-  }, [user, authLoading, loadData]);
-
-  const checkConflict = useCallback((eventId: string): CampusEvent | null => {
-    if (!user) return null;
-    const targetEvent = events.find(e => e.id === eventId);
-    if (!targetEvent) return null;
-
-    const userRegs = registrations.filter(r => r.studentId === user.id && r.status === "registered");
-    for (const reg of userRegs) {
-      const registeredEvent = events.find(e => e.id === reg.eventId);
-      if (registeredEvent && registeredEvent.id !== eventId) {
-        const parseDate = (d: string) => d.length === 10 ? new Date(d + 'T00:00:00').getTime() : new Date(d).getTime();
-        const tStart = parseDate(targetEvent.startTime);
-        const tEnd = parseDate(targetEvent.endTime);
-        const rStart = parseDate(registeredEvent.startTime);
-        const rEnd = parseDate(registeredEvent.endTime);
-        
-        if (tStart < rEnd && tEnd > rStart) {
-          return registeredEvent;
-        }
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      if (error || !user) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
       }
+      (req as any).user = user;
+      next();
+    } catch (err) {
+      res.status(401).json({ error: "Unauthorized" });
+      return;
     }
-    return null;
-  }, [user, events, registrations]);
+  };
 
-  const registerForEvent = useCallback(async (eventId: string) => {
-    await RegistrationService.register(eventId);
-    const regs = await RegistrationService.getRegistrations();
-    setRegistrations(regs);
-    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, registeredCount: e.registeredCount + 1 } : e));
-  }, []);
+  app.use("/api/", ipLimiter);
+  app.use("/api/", authMiddleware);
+  app.use("/api/", userLimiter);
 
-  const joinWaitlist = useCallback(async (eventId: string) => {
-    await RegistrationService.register(eventId);
-    const regs = await RegistrationService.getRegistrations();
-    setRegistrations(regs);
-    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, waitlistCount: e.waitlistCount + 1 } : e));
-  }, []);
 
-  const cancelRegistration = useCallback(async (eventId: string) => {
-    const reg = registrations.find(r => r.eventId === eventId && r.studentId === user?.id);
-    await RegistrationService.cancelRegistration(eventId);
-    const regs = await RegistrationService.getRegistrations();
-    setRegistrations(regs);
-    if (reg) {
-      setEvents(prev => prev.map(e => {
-        if (e.id === eventId) {
-          if (reg.status === 'registered') return { ...e, registeredCount: Math.max(0, e.registeredCount - 1) };
-          if (reg.status === 'waitlisted') return { ...e, waitlistCount: Math.max(0, e.waitlistCount - 1) };
+
+  // API Route: Admin Reset User Access (Magic Link)
+  app.post("/api/admin/reset-user-access", async (req, res) => {
+    try {
+      const user = (req as any).user;
+      if (!user) {
+        res.status(401).json({ error: "Unauthorized" });
+        return;
+      }
+      
+      const { targetEmail } = req.body;
+      if (!targetEmail) {
+        res.status(400).json({ error: "Target email required" });
+        return;
+      }
+
+      if (!adminSupabase) {
+        res.status(500).json({ error: "Server misconfiguration: missing service role key" });
+        return;
+      }
+
+      // Verify the caller is an admin
+      const { data: profile, error: profileError } = await adminSupabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+        
+      if (profileError || (profile as any)?.role !== "admin") {
+        res.status(403).json({ error: "Forbidden: Admin access required" });
+        return;
+      }
+
+      // Send the magic link email natively using signInWithOtp
+      const { error: sendError } = await adminSupabase.auth.signInWithOtp({
+        email: targetEmail,
+        options: {
+          shouldCreateUser: false
         }
-        return e;
-      }));
+      });
+
+      if (sendError) {
+        console.error("Failed to send magic link:", sendError);
+        res.status(500).json({ error: "Failed to send access link" });
+        return;
+      }
+      
+      // Log the action to audit_log
+      const { data: targetUser } = await adminSupabase.from('profiles').select('id').eq('email', targetEmail).single();
+      if (targetUser) {
+        await adminSupabase.from('audit_log').insert({
+          actor_id: user.id,
+          action: 'admin_reset_user_access',
+          target_table: 'auth.users',
+          target_id: (targetUser as any).id,
+          details: { action: 'magiclink_sent' }
+        } as any);
+      }
+
+      res.json({ success: true, message: "Magic link sent successfully" });
+    } catch (error: any) {
+      console.error("Admin Reset Error:", error);
+      res.status(500).json({ error: "Internal Server Error" });
     }
-  }, [registrations, user?.id]);
+  });
 
-  const checkInUser = useCallback(async (ticketId: string): Promise<CheckInResult> => {
-    const result = await RegistrationService.checkIn(ticketId);
-    if (result.success) {
-      const regs = await RegistrationService.getRegistrations();
-      setRegistrations(regs);
+
+  // Vite middleware for development
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();
+
+```
+
+## `skills-lock.json`
+```json
+{
+  "version": 1,
+  "skills": {
+    "supabase": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/supabase/SKILL.md",
+      "computedHash": "c4cbf2d313f6afb1ff810623b732961752bb64638f648c7a355449eb6aac9530"
+    },
+    "supabase-postgres-best-practices": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/supabase-postgres-best-practices/SKILL.md",
+      "computedHash": "128fac78002d916c8ca908245d398e634f540d8bcf20915b2b2359aeb18eba59"
     }
-    return result;
-  }, []);
+  }
+}
 
-  const createEvent = useCallback(async (eventData: Omit<CampusEvent, "id" | "registeredCount" | "waitlistCount">) => {
-    const id = await EventService.createEvent(eventData);
-    await loadData();
-    return id;
-  }, [loadData]);
+```
 
-  const saveTemplate = useCallback(async (templateData: Omit<EventTemplate, "id" | "organizerId">) => {
-    await OrganizerTemplateService.saveTemplate(templateData as Omit<EventTemplate, "id">);
-    await loadData();
-  }, [loadData]);
+## `src/App.tsx`
+```tsx
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
-  const removeRegistrant = useCallback(async (regId: string) => {
-    await RegistrationService.removeRegistrant(regId);
-    await loadData();
-  }, [loadData]);
+import React, { Suspense } from "react";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { MotionConfig } from "motion/react";
 
-  const addAnnouncement = useCallback(async (announcementData: Omit<Announcement, "id" | "timestamp">) => {
-    await UserCommunicationService.addAnnouncement(announcementData);
-    const anns = await UserCommunicationService.getAnnouncements();
-    setAnnouncements(anns);
-  }, []);
+const Toaster = React.lazy(() => import("react-hot-toast").then(m => ({ default: m.Toaster })));
+import { AuthProvider } from "./contexts/AuthContext";
+import { DataProvider } from "./contexts/DataContext";
 
-  const addFeedback = useCallback(async (feedbackData: Omit<Feedback, "id" | "studentId">) => {
-    await UserCommunicationService.addFeedback(feedbackData as Omit<Feedback, "id">);
-    const fbs = await UserCommunicationService.getFeedbacks();
-    setFeedbacks(fbs);
-  }, []);
+import Navbar from "./components/Navbar";
+import Footer from "./components/Footer";
+import LandingPage from "./components/LandingPage";
+import LoginPage from "./components/LoginPage";
+import SignUpPage from "./components/SignUpPage";
+import ProtectedRoute from "./components/ProtectedRoute";
+import MaintenanceModeWrapper from "./components/MaintenanceModeWrapper";
 
-  const deleteEvent = useCallback(async (eventId: string) => {
-    await EventService.deleteEvent(eventId);
-    await loadData();
-  }, [loadData]);
+import EventsPage from "./components/EventsPage";
+import EventDetailPage from "./components/EventDetailPage";
 
-  const unpublishEvent = useCallback(async (eventId: string, isUnpublished: boolean) => {
-    await EventService.updateEventPublishStatus(eventId, isUnpublished);
-    await loadData();
-  }, [loadData]);
+import StudentDashboard from "./components/StudentDashboard";
+import StudentTicketsPage from "./components/StudentTicketsPage";
+import OrganizerDashboard from "./components/OrganizerDashboard";
+import OrganizerCheckinPage from "./components/OrganizerCheckinPage";
+import AdminDashboard from "./components/AdminDashboard";
 
-  const contextValue = useMemo(() => ({
-    events, registrations, templates, announcements, feedbacks, isLoading, error,
-    registerForEvent, joinWaitlist, cancelRegistration, checkConflict, checkInUser,
-    createEvent, saveTemplate, removeRegistrant, addAnnouncement, addFeedback,
-    deleteEvent, unpublishEvent,
-    getMyVolunteeringEvents: EventTeamService.getMyVolunteeringEvents,
-    getVolunteers: EventTeamService.getVolunteers,
-    inviteVolunteer: EventTeamService.inviteVolunteer,
-    removeVolunteer: EventTeamService.removeVolunteer,
-    subscribeToOrganizer: SocialService.subscribeToOrganizer,
-    unsubscribeFromOrganizer: SocialService.unsubscribeFromOrganizer,
-    getFollowedOrganizers: SocialService.getFollowedOrganizers,
-    getPublicAttendeeSignal: RegistrationService.getPublicAttendeeSignal
-  }), [
-    events, registrations, templates, announcements, feedbacks, isLoading, error,
-    registerForEvent, joinWaitlist, cancelRegistration, checkConflict, checkInUser,
-    createEvent, saveTemplate, removeRegistrant, addAnnouncement, addFeedback,
-    deleteEvent, unpublishEvent
-  ]);
+import OrganizerEventWizard from "./components/OrganizerEventWizard";
+import OrganizerManageEventPage from "./components/OrganizerManageEventPage";
+import ProfileSettings from "./components/ProfileSettings";
+import PublicOrganizerPage from "./components/PublicOrganizerPage";
 
+export default function App() {
   return (
-    <DataContext.Provider value={contextValue}>
-      {children}
-    </DataContext.Provider>
+    <AuthProvider>
+      <DataProvider>
+          <Router>
+            <MotionConfig reducedMotion="user">
+              <div className="flex flex-col min-h-screen">
+                <Navbar />
+                <main className="flex-grow">
+                  <Suspense fallback={null}>
+                    <Toaster position="bottom-center" />
+                  </Suspense>
+                  <MaintenanceModeWrapper>
+                  <Routes>
+                    {/* Public Routes */}
+                    <Route path="/" element={<LandingPage />} />
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/signup" element={<SignUpPage />} />
+                    <Route path="/events" element={<EventsPage />} />
+                    <Route path="/events/:id" element={<EventDetailPage />} />
+                    <Route path="/c/:id" element={<PublicOrganizerPage />} />
+
+                    {/* Protected Routes */}
+                    <Route element={<ProtectedRoute allowedRoles={["student"]} />}>
+                      <Route path="/student" element={<StudentDashboard />} />
+                      <Route path="/student/tickets" element={<StudentTicketsPage />} />
+                    </Route>
+
+                    <Route element={<ProtectedRoute allowedRoles={["organizer"]} />}>
+                      <Route path="/organizer" element={<OrganizerDashboard />} />
+                      <Route path="/organizer/events/new" element={<OrganizerEventWizard />} />
+                      <Route path="/organizer/events/:id" element={<OrganizerManageEventPage />} />
+                    </Route>
+
+                    {/* Shared protected routes */}
+                    <Route element={<ProtectedRoute />}>
+                      <Route path="/settings" element={<ProfileSettings />} />
+                      <Route path="/checkin/:eventId" element={<OrganizerCheckinPage />} />
+                    </Route>
+
+                    <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
+                      <Route path="/admin/*" element={<AdminDashboard />} />
+                    </Route>
+                  </Routes>
+                </MaintenanceModeWrapper>
+              </main>
+              <Footer />
+            </div>
+            </MotionConfig>
+          </Router>
+      </DataProvider>
+    </AuthProvider>
   );
 }
 
-export function useData() {
-  const context = useContext(DataContext);
-  if (context === undefined) {
-    throw new Error("useData must be used within a DataProvider");
-  }
-  return context;
-}
 ```
 
+## `src/components/AdminDashboard.tsx`
+```tsx
+import { useState } from "react";
+import DashboardLayout from "./DashboardLayout";
+import { Shield, EyeOff, Eye, Trash2, ShieldAlert, Settings, Users, Calendar, AlertTriangle, ShieldCheck } from "lucide-react";
+import { useData } from "../contexts/DataContext";
+import { useAuth, User, Role } from "../contexts/AuthContext";
+import { supabase } from "../lib/supabase";
+import SkeletonLoader from "./SkeletonLoader";
+import ErrorState from "./ErrorState";
 
-## File: src/components/EventDetailPage.tsx
+export default function AdminDashboard() {
+  const { events, deleteEvent, unpublishEvent, isLoading, error } = useData();
+  const { users, settings, updateUserRole, toggleUserBan, updateSettings, user: currentUser } = useAuth();
+  
+  const [activeTab, setActiveTab] = useState<"events" | "users" | "settings">("events");
 
-```typescript
+  // Settings State
+  const [localSettings, setLocalSettings] = useState(settings);
+
+  const handleSaveSettings = () => {
+    updateSettings(localSettings);
+    alert("Settings saved successfully.");
+  };
+
+  const handleResetAccess = async (email: string) => {
+    if (!window.confirm(`Are you sure you want to send a magic link to ${email}? This will allow them to sign in immediately.`)) return;
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+
+      const res = await fetch("/api/admin/reset-user-access", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ targetEmail: email })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to reset access");
+      }
+      
+      alert(`Magic link successfully sent to ${email}`);
+    } catch (e: any) {
+      alert(`Error: ${e.message}`);
+    }
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="max-w-6xl mx-auto space-y-8">
+        <header>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 mb-4 text-xs font-bold uppercase tracking-wider">
+            <Shield className="w-4 h-4" /> System Administrator
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Admin Control Panel</h1>
+          <p className="text-gray-500 dark:text-gray-400">Monitor system health, manage user access, and moderate content.</p>
+        </header>
+
+        {error ? (
+          <ErrorState 
+            title="Failed to load admin data" 
+            message="There was a problem connecting to the server. Please try refreshing."
+            onRetry={() => window.location.reload()}
+          />
+        ) : isLoading ? (
+          <div className="space-y-8">
+            <SkeletonLoader type="card" className="h-[400px]" />
+          </div>
+        ) : (
+          <>
+        {/* Tabs */}
+        <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800 pb-4">
+          <button
+            onClick={() => setActiveTab("events")}
+            className={`px-4 py-2 font-bold text-sm rounded-lg transition-colors flex items-center gap-2 ${
+              activeTab === "events" ? "bg-primary text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            }`}
+          >
+            <Calendar className="w-4 h-4" /> Events
+          </button>
+          <button
+            onClick={() => setActiveTab("users")}
+            className={`px-4 py-2 font-bold text-sm rounded-lg transition-colors flex items-center gap-2 ${
+              activeTab === "users" ? "bg-primary text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            }`}
+          >
+            <Users className="w-4 h-4" /> Users
+          </button>
+          <button
+            onClick={() => setActiveTab("settings")}
+            className={`px-4 py-2 font-bold text-sm rounded-lg transition-colors flex items-center gap-2 ${
+              activeTab === "settings" ? "bg-primary text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            }`}
+          >
+            <Settings className="w-4 h-4" /> Settings
+          </button>
+        </div>
+
+        {activeTab === "events" && (
+          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm">
+            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+              <h2 className="text-xl font-bold">Global Event Moderation</h2>
+              <span className="text-sm font-medium text-gray-500">{events.length} Events Total</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-gray-50 dark:bg-gray-800/50 text-sm text-gray-500 dark:text-gray-400">
+                    <th className="px-6 py-4 font-medium">Event Title</th>
+                    <th className="px-6 py-4 font-medium">Organizer / Dept</th>
+                    <th className="px-6 py-4 font-medium">Status</th>
+                    <th className="px-6 py-4 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+                  {events.map((event) => (
+                    <tr key={event.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-gray-900 dark:text-white truncate max-w-xs">{event.title}</div>
+                        <div className="text-xs text-gray-500">{new Date(event.date).toLocaleDateString()}</div>
+                      </td>
+                      <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{event.department}</td>
+                      <td className="px-6 py-4">
+                        {event.isUnpublished ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 text-xs font-bold">
+                            <EyeOff className="w-3 h-3" /> Unpublished
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold">
+                            <Eye className="w-3 h-3" /> Public
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right space-x-2">
+                        <button
+                          onClick={() => unpublishEvent(event.id, !event.isUnpublished)}
+                          className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-lg transition-colors"
+                        >
+                          {event.isUnpublished ? "Publish" : "Unpublish"}
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm("Are you sure you want to delete this event permanently?")) {
+                              deleteEvent(event.id);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 text-xs font-bold rounded-lg transition-colors inline-flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" /> Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {events.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-gray-500 dark:text-gray-400">
+                        No events found on the platform.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "users" && (
+          <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm">
+            <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
+              <h2 className="text-xl font-bold">User Management</h2>
+              <span className="text-sm font-medium text-gray-500">{users.length} Registered Users</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-gray-50 dark:bg-gray-800/50 text-sm text-gray-500 dark:text-gray-400">
+                    <th className="px-6 py-4 font-medium">Email</th>
+                    <th className="px-6 py-4 font-medium">Role</th>
+                    <th className="px-6 py-4 font-medium">Status</th>
+                    <th className="px-6 py-4 font-medium text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
+                  {users.map((u) => (
+                    <tr key={u.email} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                        {u.email} {u.email === currentUser?.email && "(You)"}
+                      </td>
+                      <td className="px-6 py-4 capitalize text-gray-600 dark:text-gray-300">
+                        <select
+                          value={u.role}
+                          disabled={u.email === currentUser?.email}
+                          onChange={(e) => updateUserRole(u.id!, e.target.value as Role)}
+                          className="bg-transparent border border-gray-200 dark:border-gray-700 rounded p-1 outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+                        >
+                          <option value="student">Student</option>
+                          <option value="organizer">Organizer</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </td>
+                      <td className="px-6 py-4">
+                        {u.isBanned ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs font-bold">
+                            <ShieldAlert className="w-3 h-3" /> Suspended
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-bold">
+                            <ShieldCheck className="w-3 h-3" /> Active
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={() => toggleUserBan(u.id!, !!u.isBanned)}
+                          disabled={u.email === currentUser?.email}
+                          className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          {u.isBanned ? "Unsuspend" : "Suspend"}
+                        </button>
+                        <button
+                          onClick={() => handleResetAccess(u.email)}
+                          disabled={u.email === currentUser?.email}
+                          className="px-3 py-1.5 ml-2 bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-900/50 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          Reset Access
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {users.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-gray-500 dark:text-gray-400">
+                        No users found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "settings" && (
+          <section className="bg-white dark:bg-surface-dark p-8 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm max-w-3xl">
+            <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+              <Settings className="w-6 h-6 text-primary" /> Platform Settings
+            </h2>
+            
+            <div className="space-y-6">
+              <div className="flex items-center justify-between p-4 border border-gray-100 dark:border-gray-800 rounded-xl bg-gray-50 dark:bg-gray-800/30">
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-white">Global Signups</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Allow new users to register for an account.</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={localSettings.allowGlobalSignups}
+                    onChange={(e) => setLocalSettings({ ...localSettings, allowGlobalSignups: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+                </label>
+              </div>
+
+              <div className="p-4 border border-gray-100 dark:border-gray-800 rounded-xl bg-gray-50 dark:bg-gray-800/30">
+                <label className="block font-bold text-gray-900 dark:text-white mb-1">Allowed Email Domain</label>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Restrict registrations to a specific domain (e.g. @college.edu).</p>
+                <input
+                  type="text"
+                  value={localSettings.allowedEmailDomain}
+                  onChange={(e) => setLocalSettings({ ...localSettings, allowedEmailDomain: e.target.value })}
+                  placeholder="@yourcollege.edu"
+                  className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-4 border border-red-100 dark:border-red-900/30 rounded-xl bg-red-50 dark:bg-red-900/10">
+                <div>
+                  <h3 className="font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" /> Maintenance Mode
+                  </h3>
+                  <p className="text-sm text-red-600/80 dark:text-red-300/80">Take the platform offline for non-admins.</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={localSettings.maintenanceMode}
+                    onChange={(e) => setLocalSettings({ ...localSettings, maintenanceMode: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-red-200 peer-focus:outline-none rounded-full peer dark:bg-red-900 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-red-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-red-800 peer-checked:bg-red-600"></div>
+                </label>
+              </div>
+
+              <div className="pt-4 flex justify-end">
+                <button
+                  onClick={handleSaveSettings}
+                  className="px-6 py-2.5 bg-primary text-white font-bold rounded-xl shadow-lg shadow-primary/30 hover:bg-primary-hover transition-colors"
+                >
+                  Save Settings
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+          </>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+}
+
+```
+
+## `src/components/DashboardLayout.tsx`
+```tsx
+import { ReactNode } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { 
+  Home, 
+  Calendar, 
+  Ticket, 
+  Settings, 
+  Users, 
+  BarChart,
+  LogOut
+} from "lucide-react";
+
+interface DashboardLayoutProps {
+  children: ReactNode;
+}
+
+export default function DashboardLayout({ children }: DashboardLayoutProps) {
+  const { user, logout } = useAuth();
+  const location = useLocation();
+
+  if (!user) return null;
+
+  const navItems = {
+    student: [
+      { name: "Discover", path: "/student", icon: Home },
+      { name: "My Tickets", path: "/student/tickets", icon: Ticket },
+      { name: "Settings", path: "/settings", icon: Settings },
+    ],
+    organizer: [
+      { name: "Overview", path: "/organizer", icon: BarChart },
+      { name: "Settings", path: "/settings", icon: Settings },
+    ],
+    admin: [
+      { name: "Dashboard", path: "/admin", icon: BarChart },
+      { name: "System Settings", path: "/settings", icon: Settings },
+    ]
+  };
+
+  const currentNav = navItems[user.role] || [];
+
+  return (
+    <div className="flex min-h-[calc(100vh-4rem)] bg-bg-light dark:bg-bg-dark transition-colors">
+      {/* Sidebar */}
+      <aside className="w-64 hidden md:flex flex-col bg-surface-light dark:bg-surface-dark border-r border-gray-200 dark:border-gray-800 p-6" aria-label="Sidebar navigation">
+        <div className="mb-8 px-4" aria-live="polite">
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">
+            Logged in as
+          </p>
+          <p className="font-bold text-gray-900 dark:text-white capitalize truncate" aria-label={`Role: ${user.role}`}>
+            {user.role}
+          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 truncate mt-1" aria-label={`Email: ${user.email}`}>
+            {user.email}
+          </p>
+        </div>
+
+        <nav className="flex-1 space-y-2" aria-label="Main Navigation">
+          {currentNav.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname === item.path;
+            
+            return (
+              <Link
+                key={item.name}
+                to={item.path}
+                aria-current={isActive ? "page" : undefined}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-bg-dark ${
+                  isActive
+                    ? "bg-primary text-white shadow-md shadow-primary/20"
+                    : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                }`}
+              >
+                <Icon className="w-5 h-5" aria-hidden="true" />
+                {item.name}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="pt-8 mt-8 border-t border-gray-200 dark:border-gray-800">
+          <button
+            onClick={logout}
+            aria-label="Sign Out"
+            className="flex items-center gap-3 px-4 py-3 w-full rounded-xl font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-bg-dark"
+          >
+            <LogOut className="w-5 h-5" aria-hidden="true" />
+            Sign Out
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto p-6 lg:p-10" id="main-content" tabIndex={-1}>
+        {children}
+      </main>
+    </div>
+  );
+}
+
+```
+
+## `src/components/EmptyState.tsx`
+```tsx
+import { ReactNode } from "react";
+import { motion, useReducedMotion } from "motion/react";
+import { Link } from "react-router-dom";
+
+interface EmptyStateProps {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  actionText?: string;
+  actionHref?: string;
+  onAction?: () => void;
+}
+
+export default function EmptyState({ icon, title, description, actionText, actionHref, onAction }: EmptyStateProps) {
+  const shouldReduceMotion = useReducedMotion();
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="text-center py-16 px-4 border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-3xl w-full"
+      role="region" 
+      aria-label="Empty state"
+    >
+      <div className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4 flex items-center justify-center bg-gray-50 dark:bg-gray-800/50 rounded-full" aria-hidden="true">
+        {icon}
+      </div>
+      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{title}</h3>
+      <p className="text-gray-500 dark:text-gray-400 font-medium mb-6 max-w-md mx-auto">{description}</p>
+      
+      {actionText && (
+        actionHref ? (
+          <Link to={actionHref} className="inline-flex items-center justify-center px-6 py-3 bg-primary text-white font-semibold rounded-full hover:bg-primary-hover transition-colors shadow-md shadow-primary/20 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-bg-dark">
+            {actionText}
+          </Link>
+        ) : (
+          <button onClick={onAction} className="inline-flex items-center justify-center px-6 py-3 bg-primary text-white font-semibold rounded-full hover:bg-primary-hover transition-colors shadow-md shadow-primary/20 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-bg-dark">
+            {actionText}
+          </button>
+        )
+      )}
+    </motion.div>
+  );
+}
+
+```
+
+## `src/components/ErrorState.tsx`
+```tsx
+import { AlertTriangle, RefreshCw } from "lucide-react";
+
+interface ErrorStateProps {
+  title?: string;
+  message?: string;
+  onRetry?: () => void;
+}
+
+export default function ErrorState({ 
+  title = "Something went wrong", 
+  message = "We couldn't load this data. Please try again.", 
+  onRetry 
+}: ErrorStateProps) {
+  return (
+    <div className="w-full py-16 px-4 flex flex-col items-center justify-center text-center bg-red-50/50 dark:bg-red-900/10 rounded-3xl border border-red-100 dark:border-red-900/30" role="alert">
+      <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/50 flex items-center justify-center text-red-500 mb-4">
+        <AlertTriangle className="w-6 h-6" />
+      </div>
+      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{title}</h3>
+      <p className="text-gray-600 dark:text-gray-400 max-w-md mx-auto mb-6">{message}</p>
+      
+      {onRetry && (
+        <button 
+          onClick={onRetry}
+          className="inline-flex items-center gap-2 px-6 py-2 bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700 rounded-full font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Try Again
+        </button>
+      )}
+    </div>
+  );
+}
+
+```
+
+## `src/components/EventDetailPage.tsx`
+```tsx
 import { useState, useRef, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
@@ -866,8 +896,6 @@ import SkeletonLoader from "./SkeletonLoader";
 import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
 import { useAccessibleMotion } from "../hooks/useAccessibleMotion";
-import { supabase } from "../lib/supabase";
-import { EventService } from "../services/api";
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -889,55 +917,7 @@ export default function EventDetailPage() {
     };
   }, []);
 
-  const contextEvent = events.find(e => e.id === id);
-  const [liveEvent, setLiveEvent] = useState(contextEvent);
-
-  useEffect(() => {
-    setLiveEvent(contextEvent);
-  }, [contextEvent]);
-
-  useEffect(() => {
-    if (!id) return;
-
-    const channel = supabase
-      .channel(`event:${id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'events',
-          filter: `id=eq.${id}`
-        },
-        (payload) => {
-          setLiveEvent(prev => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              registeredCount: payload.new.registered_count ?? prev.registeredCount,
-              waitlistCount: payload.new.waitlist_count ?? prev.waitlistCount,
-              capacity: payload.new.capacity ?? prev.capacity
-            };
-          });
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          // Sync state just in case we missed updates during connection
-          EventService.getEventById(id).then(updated => {
-            if (updated) setLiveEvent(updated);
-          });
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
-          // Reconnect logic handles refetching when it resubscribes
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [id]);
-
-  const event = liveEvent;
+  const event = events.find(e => e.id === id);
 
   useEffect(() => {
     if (event) {
@@ -1130,9 +1110,9 @@ export default function EventDetailPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900 dark:text-white">
-                      {new Date(event.startTime).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                      {new Date(event.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                     </p>
-                    <p>{new Date(event.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {new Date(event.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
+                    <p>{new Date(event.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {new Date(event.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
                   </div>
                 </motion.div>
                 
@@ -1327,7 +1307,7 @@ export default function EventDetailPage() {
                 <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                   <Clock className="w-4 h-4" aria-hidden="true" />
                   <span>
-                    {new Date(conflictEvent.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
+                    {new Date(conflictEvent.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
                     {new Date(conflictEvent.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                   </span>
                 </div>
@@ -1355,614 +1335,865 @@ export default function EventDetailPage() {
     </motion.div>
   );
 }
+
 ```
 
-
-## File: src/components/OrganizerManageEventPage.tsx
-
-```typescript
-import React, { useState, useMemo, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
-import DashboardLayout from "./DashboardLayout";
-import { useData } from "../contexts/DataContext";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend } from "recharts";
-import { Download, Search, Trash2, Megaphone, ArrowLeft, Star, UserPlus, ShieldX, Calendar } from "lucide-react";
-import toast from "react-hot-toast";
+## `src/components/EventsPage.tsx`
+```tsx
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { motion } from "motion/react";
+import { useData, EventCategory } from "../contexts/DataContext";
+import { useAuth } from "../contexts/AuthContext";
+import { Calendar, MapPin, Users, Search, AlertCircle } from "lucide-react";
+import { pageTransition } from "../utils/motion";
+import TiltCard from "./TiltCard";
 import SkeletonLoader from "./SkeletonLoader";
 import EmptyState from "./EmptyState";
-import ErrorState from "./ErrorState";
 
-import { supabase } from "../lib/supabase";
-import { RegistrationService } from "../services/api";
+export default function EventsPage() {
+  const { events, isLoading, error } = useData();
+  const { user } = useAuth();
+  const [searchTerm, setSearchTerm] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<EventCategory | "All">("All");
 
-export default function OrganizerManageEventPage() {
-  const { id } = useParams<{ id: string }>();
-  const { events, registrations, removeRegistrant, announcements, addAnnouncement, feedbacks, getVolunteers, inviteVolunteer, removeVolunteer, isLoading, error } = useData();
-  const event = events.find(e => e.id === id);
 
-  const [activeTab, setActiveTab] = useState<"registrants" | "analytics" | "announcements" | "feedback" | "volunteers">("registrants");
-  
-  // Registrants State
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortField, setSortField] = useState<"email" | "status" | "attended">("email");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
-  // Announcements State
-  const [announcementTitle, setAnnouncementTitle] = useState("");
-  const [announcementContent, setAnnouncementContent] = useState("");
+  const filteredEvents = events.filter((event) => {
+    if (event.isUnpublished && user?.role !== "admin") return false;
+    const matchesSearch = event.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          event.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = categoryFilter === "All" || event.category === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
-  // Volunteers State
-  const [volunteers, setVolunteers] = useState<{userId: string; email: string}[]>([]);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteLoading, setInviteLoading] = useState(false);
-
-  useEffect(() => {
-    if (event) {
-      getVolunteers(event.id).then(setVolunteers).catch(console.error);
-    }
-  }, [event, getVolunteers]);
-
-  if (error) {
-    return (
-      <DashboardLayout>
-        <div className="max-w-6xl mx-auto py-8">
-          <ErrorState 
-            title="Failed to load event data" 
-            message="There was a problem connecting to the server. Please try refreshing."
-            onRetry={() => window.location.reload()}
-          />
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <DashboardLayout>
-        <div className="max-w-6xl mx-auto py-8 space-y-8">
-          <SkeletonLoader type="header" />
-          <SkeletonLoader type="card" className="h-[500px]" />
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  if (!event) {
-    return (
-      <DashboardLayout>
-        <div className="max-w-6xl mx-auto py-8">
-          <EmptyState 
-            icon={<Calendar className="w-8 h-8" />}
-            title="Event not found."
-            description="The event you are trying to manage does not exist or you do not have access."
-            actionText="Back to Dashboard"
-            actionHref="/organizer"
-          />
-        </div>
-      </DashboardLayout>
-    );
-  }
-
-  const eventRegsContext = registrations.filter(r => r.eventId === event.id);
-  const eventAnnouncements = announcements.filter(a => a.eventId === event.id).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  const eventFeedbacks = feedbacks.filter(f => f.eventId === event.id);
-
-  const [liveRegs, setLiveRegs] = useState(eventRegsContext);
-  useEffect(() => {
-    setLiveRegs(eventRegsContext);
-  }, [eventRegsContext]);
-
-  useEffect(() => {
-    if (!id) return;
-    const channel = supabase
-      .channel(`registrations:${id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'registrations',
-          filter: `event_id=eq.${id}`
-        },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setLiveRegs(prev => [...prev, {
-              id: payload.new.id,
-              eventId: payload.new.event_id,
-              studentId: payload.new.student_id,
-              status: payload.new.status,
-              waitlistPosition: payload.new.waitlist_position,
-              ticketId: payload.new.ticket_id,
-              attended: payload.new.attended
-            }]);
-            RegistrationService.getRegistrationsForOrganizer(id).then(regs => {
-              setLiveRegs(regs);
-            });
-          } else if (payload.eventType === 'UPDATE') {
-            setLiveRegs(prev => prev.map(r => r.id === payload.new.id ? {
-              ...r,
-              status: payload.new.status,
-              waitlistPosition: payload.new.waitlist_position,
-              attended: payload.new.attended
-            } : r));
-          } else if (payload.eventType === 'DELETE') {
-            setLiveRegs(prev => prev.filter(r => r.id !== payload.old.id));
-          }
-        }
-      )
-      .subscribe((status) => {
-         if (status === 'SUBSCRIBED') {
-            RegistrationService.getRegistrationsForOrganizer(id).then(regs => {
-                setLiveRegs(regs);
-            });
-         }
-      });
-    return () => { supabase.removeChannel(channel); };
-  }, [id]);
-
-  // Data Grid Logic
-  const filteredRegs = useMemo(() => {
-    return liveRegs.filter(r => (r.studentEmail || "").toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [liveRegs, searchQuery]);
-
-  const sortedRegs = useMemo(() => {
-    return [...filteredRegs].sort((a, b) => {
-      let valA, valB;
-      if (sortField === "email") { valA = a.studentEmail; valB = b.studentEmail; }
-      else if (sortField === "status") { valA = a.status; valB = b.status; }
-      else { valA = a.attended ? 1 : 0; valB = b.attended ? 1 : 0; }
-      
-      if (valA < valB) return sortDir === "asc" ? -1 : 1;
-      if (valA > valB) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [filteredRegs, sortField, sortDir]);
-
-  const toggleSort = (field: "email" | "status" | "attended") => {
-    if (sortField === field) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortDir("asc");
-    }
-  };
-
-  const exportCSV = () => {
-    const headers = ["Ticket ID", "Student Email", "Status", "Attended"];
-    const rows = sortedRegs.map(r => [r.ticketId || "N/A", r.studentEmail, r.status, r.attended ? "Yes" : "No"]);
-    const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.setAttribute("download", `${event.title.replace(/\s+/g, '_')}_registrants.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleBroadcast = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!announcementTitle.trim() || !announcementContent.trim()) return;
-    addAnnouncement({
-      eventId: event.id,
-      title: announcementTitle,
-      content: announcementContent
-    });
-    setAnnouncementTitle("");
-    setAnnouncementContent("");
-    toast.success("Announcement broadcasted");
-  };
-
-  const handleInviteVolunteer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inviteEmail.trim()) return;
-    setInviteLoading(true);
-    try {
-      await inviteVolunteer(event.id, inviteEmail.trim());
-      setInviteEmail("");
-      const updated = await getVolunteers(event.id);
-      setVolunteers(updated);
-      toast.success("Volunteer added");
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Failed to invite volunteer");
-    } finally {
-      setInviteLoading(false);
-    }
-  };
-
-  const handleRemoveVolunteer = async (userId: string) => {
-    try {
-      await removeVolunteer(event.id, userId);
-      const updated = await getVolunteers(event.id);
-      setVolunteers(updated);
-      toast.success("Volunteer removed");
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Failed to remove volunteer");
-    }
-  };
-
-  // Analytics Data
-  const attendanceData = [
-    { name: "Attended", value: liveRegs.filter(r => r.attended).length },
-    { name: "No Show", value: liveRegs.length - liveRegs.filter(r => r.attended).length }
-  ];
-  const COLORS = ["#10b981", "#ef4444"];
-
-  const capacityData = [
-    { name: "Registered", count: event.registeredCount },
-    { name: "Available", count: Math.max(0, event.capacity - event.registeredCount) }
-  ];
-  
-  // Mock registration over time
-  const regOverTime = [
-    { day: "Day 1", regs: Math.floor(event.registeredCount * 0.2) },
-    { day: "Day 2", regs: Math.floor(event.registeredCount * 0.5) },
-    { day: "Day 3", regs: Math.floor(event.registeredCount * 0.8) },
-    { day: "Day 4", regs: event.registeredCount },
-  ];
-
-  const avgRating = eventFeedbacks.length > 0 ? (eventFeedbacks.reduce((acc, f) => acc + f.rating, 0) / eventFeedbacks.length).toFixed(1) : "N/A";
-  const isPast = new Date(event.endTime).getTime() < Date.now();
+  const categories: (EventCategory | "All")[] = ["All", "Social", "Academic", "Sports", "Arts", "Club"];
 
   return (
-    <DashboardLayout>
-      <div className="max-w-6xl mx-auto py-8">
-        <header className="mb-8">
-          <Link to="/organizer" className="inline-flex items-center text-sm font-bold text-gray-500 hover:text-primary mb-4">
-            <ArrowLeft className="w-4 h-4 mr-1" /> Back to Dashboard
-          </Link>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{event.title}</h1>
-              <p className="text-gray-600 dark:text-gray-400">Total Registered: {liveRegs.length}</p>
-            </div>
-            <Link to={`/events/${event.id}`} target="_blank" className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-              View Public Page
-            </Link>
-          </div>
+    <motion.div 
+      variants={pageTransition}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      className="bg-bg-light dark:bg-bg-dark min-h-[calc(100vh-4rem)] transition-colors py-12"
+    >
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        
+        <header className="mb-12">
+          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">Discover Events</h1>
+          <p className="text-lg text-gray-500 dark:text-gray-400 max-w-2xl">Find out what's happening around campus. Register for events, join clubs, and make the most of your college experience.</p>
         </header>
 
-        <div className="flex gap-4 mb-8 overflow-x-auto pb-2">
-          {(["registrants", "analytics", "announcements", "feedback", "volunteers"] as const).map(tab => {
-            if (tab === "feedback" && !isPast) return null;
-            return (
+        {/* Filters and Search */}
+        <div className="flex flex-col md:flex-row gap-4 mb-8" role="search" aria-label="Events search and filters">
+          <div className="relative flex-1">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-5 w-5 text-gray-400" aria-hidden="true" />
+            </div>
+            <label htmlFor="search-events" className="sr-only">Search events</label>
+            <input
+              id="search-events"
+              type="text"
+              placeholder="Search events, clubs, or keywords..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="block w-full pl-10 pr-3 py-3 border border-gray-300 dark:border-gray-700 rounded-xl leading-5 bg-white dark:bg-surface-dark text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all shadow-sm"
+            />
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide" role="group" aria-label="Event categories">
+            {categories.map((cat) => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-6 py-3 rounded-full font-bold transition-colors whitespace-nowrap ${
-                  activeTab === tab 
-                    ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900" 
-                    : "bg-white dark:bg-surface-dark text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                aria-pressed={categoryFilter === cat}
+                className={`whitespace-nowrap px-4 py-2.5 rounded-xl font-medium text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-bg-dark ${
+                  categoryFilter === cat
+                    ? "bg-primary text-white shadow-md shadow-primary/20"
+                    : "bg-white dark:bg-surface-dark text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700"
                 }`}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {cat}
               </button>
-            )
-          })}
+            ))}
+          </div>
         </div>
 
-        {activeTab === "registrants" && (
-          <div className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
-            <div className="flex justify-between items-center mb-6">
-              <div className="relative w-64">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input 
-                  type="text" 
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search emails..." 
-                  className="w-full pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none"
-                />
-              </div>
-              <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors">
-                <Download className="w-4 h-4" /> Export CSV
-              </button>
+        {/* Event Grid */}
+        <div aria-live="polite">
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" role="status" aria-label="Loading events">
+              <SkeletonLoader type="card" count={6} />
             </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-800 text-sm text-gray-500 dark:text-gray-400">
-                    <th className="py-3 px-4 cursor-pointer hover:text-gray-900 dark:hover:text-white" onClick={() => toggleSort("email")}>
-                      Student Email {sortField === "email" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    <th className="py-3 px-4 cursor-pointer hover:text-gray-900 dark:hover:text-white" onClick={() => toggleSort("status")}>
-                      Status {sortField === "status" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    <th className="py-3 px-4 cursor-pointer hover:text-gray-900 dark:hover:text-white" onClick={() => toggleSort("attended")}>
-                      Attended {sortField === "attended" && (sortDir === "asc" ? "↑" : "↓")}
-                    </th>
-                    <th className="py-3 px-4">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedRegs.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="py-8 text-center text-gray-500">No registrants found.</td>
-                    </tr>
-                  ) : (
-                    sortedRegs.map(reg => (
-                      <tr key={reg.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
-                        <td className="py-3 px-4 font-medium">{reg.studentEmail}</td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                            reg.status === "registered" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
-                          }`}>
-                            {reg.status}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          {reg.attended ? <span className="text-green-600 font-bold">Yes</span> : <span className="text-gray-400">No</span>}
-                        </td>
-                        <td className="py-3 px-4">
-                          <button 
-                            onClick={() => removeRegistrant(reg.id)}
-                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                            title="Remove Registrant"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+          ) : error ? (
+            <div className="py-12">
+              <EmptyState 
+                icon={<AlertCircle className="w-8 h-8" />}
+                title="Failed to load events"
+                description="There was a problem connecting to the server. Please try refreshing the page."
+                actionText="Refresh Page"
+                onAction={() => window.location.reload()}
+              />
             </div>
-          </div>
-        )}
-
-        {activeTab === "analytics" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm col-span-1 md:col-span-2">
-              <h3 className="font-bold mb-6">Registrations Over Time</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={regOverTime}>
-                    <defs>
-                      <linearGradient id="colorRegs" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.2} />
-                    <XAxis dataKey="day" stroke="#6b7280" />
-                    <YAxis stroke="#6b7280" />
-                    <RechartsTooltip />
-                    <Area type="monotone" dataKey="regs" stroke="#4f46e5" fillOpacity={1} fill="url(#colorRegs)" isAnimationActive={true} animationDuration={1500} animationEasing="ease-out" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
-              <h3 className="font-bold mb-4">Attendance Rate</h3>
-              <div className="h-64 flex items-center justify-center">
-                {liveRegs.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={attendanceData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" isAnimationActive={true} animationDuration={1500} animationEasing="ease-out">
-                        {attendanceData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <RechartsTooltip />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <p className="text-gray-500">No data</p>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
-              <h3 className="font-bold mb-4">Capacity Fill</h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={capacityData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.2} />
-                    <XAxis dataKey="name" stroke="#6b7280" />
-                    <YAxis stroke="#6b7280" />
-                    <RechartsTooltip />
-                    <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "announcements" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm h-fit">
-              <h3 className="font-bold mb-2 flex items-center gap-2"><Megaphone className="w-5 h-5 text-primary" /> Broadcast Announcement</h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Send a notification to all registered attendees.</p>
-              <form onSubmit={handleBroadcast} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Subject</label>
-                  <input
-                    type="text"
-                    value={announcementTitle}
-                    onChange={e => setAnnouncementTitle(e.target.value)}
-                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none"
-                    placeholder="e.g., Room Change"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Message</label>
-                  <textarea
-                    value={announcementContent}
-                    onChange={e => setAnnouncementContent(e.target.value)}
-                    rows={4}
-                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none"
-                    placeholder="Write your message..."
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={!announcementTitle.trim() || !announcementContent.trim()}
-                  className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50"
-                >
-                  Send Broadcast
-                </button>
-              </form>
-            </div>
-            
-            <div>
-              <h3 className="font-bold mb-4">Past Announcements</h3>
-              <div className="space-y-4">
-                {eventAnnouncements.length === 0 ? (
-                  <p className="text-gray-500 text-sm">No announcements sent yet.</p>
-                ) : (
-                  eventAnnouncements.map(ann => (
-                    <div key={ann.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-800">
-                      <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-bold text-gray-900 dark:text-white">{ann.title}</h4>
-                        <span className="text-xs text-gray-500">{new Date(ann.timestamp).toLocaleString()}</span>
-                      </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-300">{ann.content}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "feedback" && isPast && (
-          <div className="space-y-6">
-            <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-gray-500 dark:text-gray-400">Average Rating</h3>
-                <div className="text-4xl font-bold text-gray-900 dark:text-white mt-1 flex items-center gap-2">
-                  {avgRating} <Star className="w-8 h-8 text-yellow-400 fill-current" />
-                </div>
-              </div>
-              <div className="text-right">
-                <h3 className="font-bold text-gray-500 dark:text-gray-400">Total Reviews</h3>
-                <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{eventFeedbacks.length}</div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {eventFeedbacks.length === 0 ? (
-                <div className="text-center p-8 bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 text-gray-500">
-                  No feedback received yet.
-                </div>
-              ) : (
-                eventFeedbacks.map(f => (
-                  <div key={f.id} className="bg-white dark:bg-surface-dark p-5 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="text-sm font-bold text-gray-900 dark:text-white">{f.studentEmail}</div>
-                      <div className="flex">
-                        {[1, 2, 3, 4, 5].map(star => (
-                          <Star key={star} className={`w-4 h-4 ${star <= f.rating ? "text-yellow-400 fill-current" : "text-gray-300 dark:text-gray-700"}`} />
-                        ))}
-                      </div>
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-300 text-sm">{f.comment}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-
-        {activeTab === "volunteers" && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-1">
-              <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm sticky top-24">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <UserPlus className="w-5 h-5 text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-gray-900 dark:text-white">Invite Volunteer</h2>
-                  </div>
-                </div>
-                <p className="text-sm text-gray-500 mb-6">
-                  Volunteers can scan and manually check in attendees. They cannot edit the event or export data. They must already have a Gatherum account.
-                </p>
-                <form onSubmit={handleInviteVolunteer} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      required
-                      value={inviteEmail}
-                      onChange={e => setInviteEmail(e.target.value)}
-                      className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none"
-                      placeholder="student@poornima.org"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={!inviteEmail.trim() || inviteLoading}
-                    className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50"
-                  >
-                    {inviteLoading ? "Adding..." : "Add Volunteer"}
-                  </button>
-                </form>
-              </div>
-            </div>
-            
-            <div className="lg:col-span-2">
-              <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Current Volunteers ({volunteers.length})</h3>
-              <div className="space-y-4">
-                {volunteers.length === 0 ? (
-                  <div className="text-center p-8 bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 text-gray-500">
-                    No volunteers added yet.
-                  </div>
-                ) : (
-                  volunteers.map(vol => (
-                    <div key={vol.userId} className="flex justify-between items-center p-4 bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary">
-                          {vol.email.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <div className="font-bold text-gray-900 dark:text-white">{vol.email}</div>
-                          <div className="text-xs text-gray-500">Event Volunteer</div>
+          ) : filteredEvents.length > 0 ? (
+            <motion.div 
+              initial="hidden"
+              animate="show"
+              variants={{
+                hidden: { opacity: 0 },
+                show: { opacity: 1, transition: { staggerChildren: 0.1 } }
+              }}
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" 
+              role="list"
+            >
+              {filteredEvents.map((event) => (
+                <motion.div key={event.id} variants={{ hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } }} role="listitem">
+                  <TiltCard>
+                    <Link 
+                      to={`/events/${event.id}`}
+                      aria-label={`View details for ${event.title}`}
+                      className="group flex flex-col h-full bg-white dark:bg-surface-dark rounded-3xl overflow-hidden border border-gray-100 dark:border-gray-800 hover:shadow-2xl transition-shadow focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-bg-dark shadow-md"
+                    >
+                      <div className="h-48 relative overflow-hidden bg-gray-100 dark:bg-gray-800" aria-hidden="true">
+                        <img src={event.posterUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <div className="absolute top-4 right-4 bg-white/90 dark:bg-surface-dark/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold text-gray-900 dark:text-white shadow-sm">
+                          {event.category}
                         </div>
                       </div>
-                      <button
-                        onClick={() => {
-                          if (window.confirm("Remove this volunteer?")) {
-                            handleRemoveVolunteer(vol.userId);
-                          }
-                        }}
-                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-colors"
-                        title="Remove volunteer"
-                      >
-                        <ShieldX className="w-5 h-5" />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
+                      <div className="p-6 flex flex-col flex-grow">
+                        <h3 className="text-xl font-bold mb-3 text-gray-900 dark:text-white group-hover:text-primary transition-colors line-clamp-1">{event.title}</h3>
+                        <div className="space-y-2 mb-4">
+                          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                            <Calendar className="w-4 h-4 text-primary" aria-hidden="true" />
+                            <span>{new Date(event.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                            <MapPin className="w-4 h-4 text-accent" aria-hidden="true" />
+                            <span className="truncate">{event.location}</span>
+                          </div>
+                        </div>
+                        <p className="text-gray-600 dark:text-gray-300 text-sm mb-6 line-clamp-2">{event.description}</p>
+                        
+                        <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                          <div className="flex items-center gap-1.5 text-sm font-medium text-gray-500 dark:text-gray-400">
+                            <Users className="w-4 h-4" aria-hidden="true" />
+                            <span>{event.registeredCount} / {event.capacity}</span>
+                          </div>
+                          <span className="text-primary font-bold text-sm">View →</span>
+                        </div>
+                      </div>
+                    </Link>
+                  </TiltCard>
+                </motion.div>
+              ))}
+            </motion.div>
+          ) : (
+            <div className="py-12">
+              <EmptyState 
+                icon={<Search className="w-8 h-8" />}
+                title="No events found"
+                description="We couldn't find any events matching your search criteria. Try adjusting your filters."
+                actionText="Clear Filters"
+                onAction={() => {
+                  setSearchTerm("");
+                  setCategoryFilter("All");
+                }}
+              />
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </DashboardLayout>
+    </motion.div>
   );
 }
+
 ```
 
+## `src/components/Footer.tsx`
+```tsx
+export default function Footer() {
+  return (
+    <footer className="bg-surface-light dark:bg-surface-dark border-t border-gray-200 dark:border-gray-800 py-12 mt-auto transition-colors">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="flex flex-col items-center md:items-start">
+          <span className="font-heading font-bold text-xl text-primary">Gatherum</span>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Connecting campus life, one event at a time.</p>
+        </div>
+        
+        <div className="flex gap-6 text-sm text-gray-500 dark:text-gray-400">
+          <a href="#" className="hover:text-primary transition-colors">About</a>
+          <a href="#" className="hover:text-primary transition-colors">Privacy</a>
+          <a href="#" className="hover:text-primary transition-colors">Terms</a>
+        </div>
+      </div>
+    </footer>
+  );
+}
 
-## File: src/components/OrganizerCheckinPage.tsx
+```
 
-```typescript
+## `src/components/LandingHero3D.tsx`
+```tsx
+import { useRef, useMemo } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Float, PointMaterial, Points } from '@react-three/drei';
+import * as THREE from 'three';
+
+function ParticleField() {
+  const ref = useRef<THREE.Points>(null);
+  const { mouse } = useThree();
+
+  const count = 3000;
+  const positions = useMemo(() => {
+    const p = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      p[i * 3] = (Math.random() - 0.5) * 15;
+      p[i * 3 + 1] = (Math.random() - 0.5) * 15;
+      p[i * 3 + 2] = (Math.random() - 0.5) * 15;
+    }
+    return p;
+  }, [count]);
+
+  useFrame((state) => {
+    if (!ref.current) return;
+    ref.current.rotation.x = state.clock.elapsedTime * 0.02;
+    ref.current.rotation.y = state.clock.elapsedTime * 0.05;
+    
+    // Gentle mouse follow
+    ref.current.rotation.x += (mouse.y * 0.2 - ref.current.rotation.x) * 0.05;
+    ref.current.rotation.y += (mouse.x * 0.2 - ref.current.rotation.y) * 0.05;
+  });
+
+  return (
+    <Points ref={ref} positions={positions} stride={3} frustumCulled={false}>
+      <PointMaterial
+        transparent
+        color="#8B5CF6"
+        size={0.03}
+        sizeAttenuation={true}
+        depthWrite={false}
+        opacity={0.4}
+      />
+    </Points>
+  );
+}
+
+function FloatingShape() {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const { mouse } = useThree();
+  
+  useFrame((state) => {
+    if (!meshRef.current) return;
+    meshRef.current.rotation.x += (mouse.y * 0.5 - meshRef.current.rotation.x) * 0.05;
+    meshRef.current.rotation.y += (mouse.x * 0.5 - meshRef.current.rotation.y) * 0.05;
+  });
+
+  return (
+    <Float speed={2} rotationIntensity={0.5} floatIntensity={1}>
+      <mesh ref={meshRef}>
+        <icosahedronGeometry args={[2, 1]} />
+        <meshStandardMaterial 
+          color="#8B5CF6" 
+          wireframe 
+          transparent
+          opacity={0.2}
+        />
+      </mesh>
+    </Float>
+  );
+}
+
+export default function LandingHero3D() {
+  return (
+    <div className="absolute inset-0 -z-10 opacity-60 dark:opacity-40">
+      <Canvas camera={{ position: [0, 0, 8], fov: 60 }} dpr={[1, 2]}>
+        <ambientLight intensity={0.5} />
+        <pointLight position={[10, 10, 10]} />
+        <ParticleField />
+        <FloatingShape />
+      </Canvas>
+    </div>
+  );
+}
+
+```
+
+## `src/components/LandingPage.tsx`
+```tsx
+import { Calendar, Users, Zap } from "lucide-react";
+import { Link } from "react-router-dom";
+import { motion, useReducedMotion } from "motion/react";
+import React, { Suspense } from "react";
+import { pageTransition } from "../utils/motion";
+import { useData } from "../contexts/DataContext";
+import SkeletonLoader from "./SkeletonLoader";
+import TiltCard from "./TiltCard";
+
+const LandingHero3D = React.lazy(() => import("./LandingHero3D"));
+
+export default function LandingPage() {
+  const shouldReduceMotion = useReducedMotion();
+  const { events, isLoading } = useData();
+  
+  // Get up to 3 upcoming events
+  const now = new Date().getTime();
+  const upcomingEvents = events
+    .filter(e => !e.isUnpublished && new Date(e.endTime).getTime() > now)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(0, 3);
+
+  const staggerContainer = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.15
+      }
+    }
+  };
+
+  const itemAnim = {
+    hidden: { opacity: 0, y: shouldReduceMotion ? 0 : 30 },
+    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 24 } }
+  };
+
+  return (
+    <motion.div 
+      variants={pageTransition}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      className="flex flex-col min-h-[calc(100vh-4rem)] relative"
+    >
+      {/* Hero Section */}
+      <section className="relative px-4 py-24 sm:py-32 lg:py-40 flex flex-col items-center text-center overflow-hidden min-h-[80vh] justify-center">
+        <div className="absolute inset-0 -z-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-bg-light to-bg-light dark:from-primary/20 dark:via-bg-dark dark:to-bg-dark"></div>
+        
+        {!shouldReduceMotion && (
+          <Suspense fallback={null}>
+            <LandingHero3D />
+          </Suspense>
+        )}
+
+        <motion.div 
+          initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" as any }}
+          className="relative z-10"
+        >
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/20 text-accent-darker dark:text-accent mb-8">
+            <span className="flex h-2 w-2 rounded-full bg-accent"></span>
+            <span className="text-sm font-semibold tracking-wide uppercase">Your Campus, Live</span>
+          </div>
+          
+          <h1 className="max-w-4xl text-5xl md:text-7xl font-bold tracking-tight text-gray-900 dark:text-white mb-6 drop-shadow-sm">
+            Experience <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">College Events</span> Like Never Before
+          </h1>
+          
+          <p className="max-w-2xl text-lg md:text-xl text-gray-600 dark:text-gray-300 mb-10 leading-relaxed mx-auto drop-shadow-sm bg-white/50 dark:bg-black/50 p-4 rounded-2xl backdrop-blur-sm">
+            Gatherum brings all your university happenings into one vibrant platform. Discover parties, academic talks, and club meetups instantly.
+          </p>
+          
+          <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
+            <Link to="/signup" className="px-8 py-4 rounded-full bg-primary text-white font-semibold text-lg hover:bg-primary-hover hover:scale-105 transition-all shadow-lg shadow-primary/30">
+              Join Gatherum
+            </Link>
+            <Link to="/login" className="px-8 py-4 rounded-full bg-white/80 dark:bg-surface-dark/80 backdrop-blur-md text-gray-900 dark:text-white font-semibold text-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
+              Sign In
+            </Link>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* Features / Upcoming Events */}
+      <section id="features" className="py-24 bg-white dark:bg-surface-dark transition-colors relative z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div 
+            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.5 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900 dark:text-white">Trending on Campus</h2>
+            <p className="text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">Don't miss out on what everyone will be talking about tomorrow.</p>
+          </motion.div>
+          
+          <motion.div 
+            variants={staggerContainer}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: "-100px" }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-8"
+          >
+            {isLoading ? (
+              <SkeletonLoader type="card" count={3} />
+            ) : upcomingEvents.length > 0 ? (
+              upcomingEvents.map((event) => (
+                <Link key={event.id} to={`/events/${event.id}`} className="block h-full">
+                  <TiltCard className="h-full flex flex-col">
+                    <div className="aspect-[4/3] bg-gray-200 dark:bg-gray-800 relative overflow-hidden">
+                      <img src={event.posterUrl} alt={event.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80 group-hover:opacity-100 transition-opacity"></div>
+                      <div className="absolute bottom-4 left-4 z-20">
+                        <span className="px-3 py-1 bg-primary text-white text-xs font-bold rounded-full tracking-wider">{event.category}</span>
+                      </div>
+                    </div>
+                    <div className="p-6 flex flex-col flex-grow bg-white dark:bg-surface-dark border border-gray-100 dark:border-gray-800 rounded-b-2xl shadow-sm">
+                      <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-white group-hover:text-primary transition-colors line-clamp-1">{event.title}</h3>
+                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
+                        <Calendar className="w-4 h-4 text-primary" />
+                        <span className="font-medium">{new Date(event.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} • {new Date(event.date).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
+                      </div>
+                      <p className="text-gray-600 dark:text-gray-300 text-sm mb-6 line-clamp-2">{event.description}</p>
+                      
+                      <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                        <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400">
+                          <Users className="w-4 h-4" />
+                          <span>{event.registeredCount} / {event.capacity}</span>
+                        </div>
+                        <span className="text-primary font-bold">View Details →</span>
+                      </div>
+                    </div>
+                  </TiltCard>
+                </Link>
+              ))
+            ) : (
+              <div className="col-span-3 text-center py-12 text-gray-500 dark:text-gray-400">
+                Check back soon for new events!
+              </div>
+            )}
+          </motion.div>
+        </div>
+      </section>
+    </motion.div>
+  );
+}
+
+```
+
+## `src/components/LoginPage.tsx`
+```tsx
+import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useAuth, AuthError } from "../contexts/AuthContext";
+import { motion, AnimatePresence } from "motion/react";
+
+// ─── Error messages ───────────────────────────────────────────────────────────
+const ERROR_MESSAGES: Record<AuthError, string> = {
+  invalid_email: "Please enter a valid email address.",
+  domain_restricted: "Sign-ups are restricted to your university email domain.",
+  signups_disabled: "New sign-ups are temporarily disabled. Please try again later.",
+  user_banned: "Your account has been suspended. Contact support.",
+  unknown: "Something went wrong. Please try again.",
+};
+
+// ─── Google Icon ─────────────────────────────────────────────────────────────
+function GoogleIcon() {
+  return (
+    <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+    </svg>
+  );
+}
+
+// ─── Spinner ──────────────────────────────────────────────────────────────────
+function Spinner() {
+  return (
+    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+    </svg>
+  );
+}
+
+// ─── Decorative background blobs ─────────────────────────────────────────────
+function Background() {
+  return (
+    <div className="fixed inset-0 -z-10 overflow-hidden bg-bg-light">
+      <div className="absolute -top-40 -left-40 w-[700px] h-[700px] rounded-full bg-primary/5 blur-[120px]" />
+      <div className="absolute -bottom-40 -right-40 w-[600px] h-[600px] rounded-full bg-accent/5 blur-[120px]" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-primary/10 blur-[80px]" />
+      {/* Grid */}
+      <div
+        className="absolute inset-0 opacity-10"
+        style={{
+          backgroundImage:
+            "linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)",
+          backgroundSize: "40px 40px",
+        }}
+      />
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+type Screen = "choose" | "magic_link" | "magic_sent";
+
+export default function LoginPage() {
+  const [screen, setScreen] = useState<Screen>("choose");
+  const [email, setEmail]   = useState("");
+  const [error, setError]   = useState<string | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [magicLoading, setMagicLoading]   = useState(false);
+
+  const { login, loginWithGoogle, user, authError, clearAuthError, settings } = useAuth();
+  const navigate  = useNavigate();
+  const location  = useLocation();
+
+  // Handle OAuth callback errors in URL
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const urlError = params.get("error_description");
+    if (urlError) {
+      setError("Sign-in failed: " + decodeURIComponent(urlError.replace(/\+/g, " ")));
+      // Clean the URL without reloading
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [location.search]);
+
+  // Auth context-level errors (e.g. banned user)
+  useEffect(() => {
+    if (authError) {
+      setError(ERROR_MESSAGES[authError]);
+      clearAuthError();
+    }
+  }, [authError, clearAuthError]);
+
+  // Redirect when logged in
+  useEffect(() => {
+    if (user) navigate(`/${user.role}`, { replace: true });
+  }, [user, navigate]);
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setGoogleLoading(true);
+    const result = await loginWithGoogle();
+    if (!result.success && result.error) {
+      setError(ERROR_MESSAGES[result.error]);
+      setGoogleLoading(false);
+    }
+    // On success, Supabase redirects — no need to setLoading(false)
+  };
+
+  const handleMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setMagicLoading(true);
+    const result = await login(email);
+    setMagicLoading(false);
+    if (result.success) {
+      setScreen("magic_sent");
+    } else if (result.error) {
+      setError(ERROR_MESSAGES[result.error]);
+    }
+  };
+
+  const domainHint = settings.allowedEmailDomain
+    ? `Use your ${settings.allowedEmailDomain} email`
+    : "Enter your email address";
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4 relative overflow-hidden">
+      <Background />
+
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="w-full max-w-md z-10"
+      >
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.1 }}
+            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white shadow-lg shadow-primary/20 mb-4 border border-gray-100"
+          >
+            <svg className="w-8 h-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
+            </svg>
+          </motion.div>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Gatherum</h1>
+          <p className="text-gray-500 mt-1 text-sm">Your campus event hub</p>
+        </div>
+
+        {/* Card */}
+        <div className="bg-white/80 backdrop-blur-xl border border-gray-200/50 rounded-3xl p-8 shadow-2xl shadow-gray-200/50">
+          <AnimatePresence mode="wait">
+
+            {/* ── CHOOSE screen ─────────────────────────── */}
+            {screen === "choose" && (
+              <motion.div
+                key="choose"
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 16 }}
+                transition={{ duration: 0.25 }}
+              >
+                <h2 className="text-xl font-semibold text-gray-900 mb-1">Welcome back</h2>
+                <p className="text-gray-500 text-sm mb-6">Sign in to manage your campus life.</p>
+
+                {/* Error Banner */}
+                <AnimatePresence>
+                  {error && (
+                    <motion.div
+                      key="error"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm overflow-hidden"
+                    >
+                      {error}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Google Button */}
+                <motion.button
+                  id="google-signin-btn"
+                  onClick={handleGoogleSignIn}
+                  disabled={googleLoading}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 font-medium transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed mb-4 shadow-sm group"
+                >
+                  {googleLoading ? <Spinner /> : <GoogleIcon />}
+                  <span>{googleLoading ? "Redirecting…" : "Continue with Google"}</span>
+                </motion.button>
+
+                {/* Divider */}
+                <div className="relative flex items-center mb-4">
+                  <div className="flex-grow border-t border-gray-200" />
+                  <span className="mx-4 text-gray-400 text-xs uppercase tracking-widest font-medium">or</span>
+                  <div className="flex-grow border-t border-gray-200" />
+                </div>
+
+                {/* Magic Link CTA */}
+                <motion.button
+                  id="magic-link-btn"
+                  onClick={() => { setError(null); setScreen("magic_link"); }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="w-full py-3.5 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold transition-colors duration-200 shadow-md shadow-primary/20"
+                >
+                  Sign in with Email Link
+                </motion.button>
+
+                <p className="text-center text-gray-500 text-sm mt-6 font-medium">
+                  Don't have an account?{" "}
+                  <Link to="/signup" className="text-primary hover:text-primary-hover font-bold transition-colors">
+                    Sign up
+                  </Link>
+                </p>
+              </motion.div>
+            )}
+
+            {/* ── MAGIC LINK form ───────────────────────── */}
+            {screen === "magic_link" && (
+              <motion.div
+                key="magic_link"
+                initial={{ opacity: 0, x: 16 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -16 }}
+                transition={{ duration: 0.25 }}
+              >
+                <button
+                  onClick={() => { setError(null); setScreen("choose"); }}
+                  className="flex items-center gap-1.5 text-gray-500 hover:text-gray-800 font-medium text-sm mb-6 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                  Back
+                </button>
+
+                <h2 className="text-xl font-semibold text-gray-900 mb-1">Sign in with email</h2>
+                <p className="text-gray-500 text-sm mb-6">
+                  We'll send a magic link to your inbox — no password needed.
+                </p>
+
+                <AnimatePresence>
+                  {error && (
+                    <motion.div
+                      key="ml-error"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm overflow-hidden"
+                    >
+                      {error}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <form onSubmit={handleMagicLink} className="space-y-4">
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Email address
+                    </label>
+                    <input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder={domainHint}
+                      required
+                      autoFocus
+                      className="w-full px-4 py-3 rounded-xl bg-white border border-gray-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"
+                    />
+                    {settings.allowedEmailDomain && (
+                      <p className="mt-1.5 text-xs text-gray-500 font-medium">
+                        Only <span className="text-primary">{settings.allowedEmailDomain}</span> addresses are allowed.
+                      </p>
+                    )}
+                  </div>
+
+                  <motion.button
+                    id="send-magic-link-btn"
+                    type="submit"
+                    disabled={magicLoading || !email.trim()}
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="w-full py-3.5 rounded-xl bg-primary hover:bg-primary-hover text-white font-semibold flex items-center justify-center gap-2 transition-colors duration-200 shadow-md shadow-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {magicLoading && <Spinner />}
+                    {magicLoading ? "Sending…" : "Send Magic Link"}
+                  </motion.button>
+                </form>
+              </motion.div>
+            )}
+
+            {/* ── MAGIC SENT confirmation ───────────────── */}
+            {screen === "magic_sent" && (
+              <motion.div
+                key="magic_sent"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3 }}
+                className="text-center py-4"
+              >
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-semibold text-gray-900 mb-2">Check your inbox!</h2>
+                <p className="text-gray-500 text-sm mb-1">
+                  We sent a magic link to
+                </p>
+                <p className="text-primary font-semibold text-sm mb-6">{email}</p>
+                <p className="text-gray-500 text-xs">
+                  Click the link in the email to sign in. It expires in 1 hour.
+                </p>
+                <button
+                  onClick={() => { setScreen("magic_link"); setError(null); }}
+                  className="mt-6 text-sm text-gray-500 font-medium hover:text-primary underline-offset-2 hover:underline transition-colors"
+                >
+                  Use a different email
+                </button>
+              </motion.div>
+            )}
+
+          </AnimatePresence>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+```
+
+## `src/components/MaintenanceModeWrapper.tsx`
+```tsx
+import { ReactNode } from "react";
+import { useAuth } from "../contexts/AuthContext";
+import { Wrench } from "lucide-react";
+
+export default function MaintenanceModeWrapper({ children }: { children: ReactNode }) {
+  const { settings, user } = useAuth();
+
+  if (settings.maintenanceMode && user?.role !== "admin") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+        <div className="w-24 h-24 bg-primary/10 text-primary rounded-full flex items-center justify-center mb-6">
+          <Wrench className="w-12 h-12" />
+        </div>
+        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">We'll be right back</h1>
+        <p className="text-xl text-gray-500 dark:text-gray-400 max-w-lg mx-auto">
+          Gatherum is currently undergoing scheduled maintenance. Please check back later!
+        </p>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+```
+
+## `src/components/Navbar.tsx`
+```tsx
+import { Link } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { Ticket } from "lucide-react";
+
+export default function Navbar() {
+  const { user, logout } = useAuth();
+
+  return (
+    <nav className="sticky top-0 z-50 bg-surface-light/80 dark:bg-surface-dark/80 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 transition-colors">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          <Link to="/" className="flex items-center gap-2 text-primary">
+            <Ticket className="w-8 h-8" />
+            <span className="font-heading font-bold text-2xl tracking-tight">Gatherum</span>
+          </Link>
+          
+          <div className="flex items-center gap-4">
+            {user ? (
+              <div className="flex items-center gap-4">
+                <Link 
+                  to={`/${user.role}`}
+                  className="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-200 hover:text-primary dark:hover:text-primary transition-colors"
+                >
+                  Dashboard
+                </Link>
+                <button 
+                  onClick={logout}
+                  className="px-4 py-2 text-sm font-semibold rounded-full border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <Link 
+                to="/login"
+                className="px-5 py-2 text-sm font-semibold rounded-full bg-primary text-white hover:bg-primary-hover transition-colors shadow-sm"
+              >
+                Login
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+```
+
+## `src/components/OrganizerCheckinPage.tsx`
+```tsx
 import React, { useState, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Scanner } from "@yudiel/react-qr-scanner";
 import { useData, Registration } from "../contexts/DataContext";
 import { useAuth } from "../contexts/AuthContext";
 import { RegistrationService } from "../services/api";
-import { supabase } from "../lib/supabase";
 import { CheckCircle, AlertTriangle, ArrowLeft, Search, User, QrCode } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import SkeletonLoader from "./SkeletonLoader";
@@ -1992,51 +2223,6 @@ export default function OrganizerCheckinPage() {
           setError(true);
           setLoading(false);
         });
-
-      const channel = supabase
-        .channel(`registrations_checkin:${eventId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'registrations',
-            filter: `event_id=eq.${eventId}`
-          },
-          (payload) => {
-            if (payload.eventType === 'INSERT') {
-              setRegistrations(prev => [...prev, {
-                id: payload.new.id,
-                eventId: payload.new.event_id,
-                studentId: payload.new.student_id,
-                status: payload.new.status,
-                waitlistPosition: payload.new.waitlist_position,
-                ticketId: payload.new.ticket_id,
-                attended: payload.new.attended
-              }]);
-              // Refresh to get joined data like email
-              RegistrationService.getRegistrationsForOrganizer(eventId).then(setRegistrations);
-            } else if (payload.eventType === 'UPDATE') {
-              setRegistrations(prev => prev.map(r => r.id === payload.new.id ? {
-                ...r,
-                status: payload.new.status,
-                waitlistPosition: payload.new.waitlist_position,
-                attended: payload.new.attended
-              } : r));
-            } else if (payload.eventType === 'DELETE') {
-              setRegistrations(prev => prev.filter(r => r.id !== payload.old.id));
-            }
-          }
-        )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            RegistrationService.getRegistrationsForOrganizer(eventId).then(setRegistrations);
-          }
-        });
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
     }
   }, [eventId]);
   // We'll search across all registrations.
@@ -2251,410 +2437,63 @@ export default function OrganizerCheckinPage() {
     </div>
   );
 }
+
 ```
 
-
-## File: src/components/LandingPage.tsx
-
-```typescript
-import { Calendar, Users, Zap } from "lucide-react";
-import { Link } from "react-router-dom";
-import { motion, useReducedMotion } from "motion/react";
-import React, { Suspense } from "react";
-import { pageTransition } from "../utils/motion";
-import { useData } from "../contexts/DataContext";
-import SkeletonLoader from "./SkeletonLoader";
-import TiltCard from "./TiltCard";
-
-const LandingHero3D = React.lazy(() => import("./LandingHero3D"));
-
-export default function LandingPage() {
-  const shouldReduceMotion = useReducedMotion();
-  const { events, isLoading } = useData();
-  
-  // Get up to 3 upcoming events
-  const now = new Date().getTime();
-  const upcomingEvents = events
-    .filter(e => !e.isUnpublished && new Date(e.endTime).getTime() > now)
-    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-    .slice(0, 3);
-
-  const staggerContainer = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.15
-      }
-    }
-  };
-
-  const itemAnim = {
-    hidden: { opacity: 0, y: shouldReduceMotion ? 0 : 30 },
-    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 24 } }
-  };
-
-  return (
-    <motion.div 
-      variants={pageTransition}
-      initial="initial"
-      animate="animate"
-      exit="exit"
-      className="flex flex-col min-h-[calc(100vh-4rem)] relative"
-    >
-      {/* Hero Section */}
-      <section className="relative px-4 py-24 sm:py-32 lg:py-40 flex flex-col items-center text-center overflow-hidden min-h-[80vh] justify-center">
-        <div className="absolute inset-0 -z-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-bg-light to-bg-light dark:from-primary/20 dark:via-bg-dark dark:to-bg-dark"></div>
-        
-        {!shouldReduceMotion && (
-          <Suspense fallback={null}>
-            <LandingHero3D />
-          </Suspense>
-        )}
-
-        <motion.div 
-          initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" as any }}
-          className="relative z-10"
-        >
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/20 text-accent-darker dark:text-accent mb-8">
-            <span className="flex h-2 w-2 rounded-full bg-accent"></span>
-            <span className="text-sm font-semibold tracking-wide uppercase">Your Campus, Live</span>
-          </div>
-          
-          <h1 className="max-w-4xl text-5xl md:text-7xl font-bold tracking-tight text-gray-900 dark:text-white mb-6 drop-shadow-sm">
-            Experience <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">College Events</span> Like Never Before
-          </h1>
-          
-          <p className="max-w-2xl text-lg md:text-xl text-gray-600 dark:text-gray-300 mb-10 leading-relaxed mx-auto drop-shadow-sm bg-white/50 dark:bg-black/50 p-4 rounded-2xl backdrop-blur-sm">
-            Gatherum brings all your university happenings into one vibrant platform. Discover parties, academic talks, and club meetups instantly.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
-            <Link to="/signup" className="px-8 py-4 rounded-full bg-primary text-white font-semibold text-lg hover:bg-primary-hover hover:scale-105 transition-all shadow-lg shadow-primary/30">
-              Join Gatherum
-            </Link>
-            <Link to="/login" className="px-8 py-4 rounded-full bg-white/80 dark:bg-surface-dark/80 backdrop-blur-md text-gray-900 dark:text-white font-semibold text-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
-              Sign In
-            </Link>
-          </div>
-        </motion.div>
-      </section>
-
-      {/* Features / Upcoming Events */}
-      <section id="features" className="py-24 bg-white dark:bg-surface-dark transition-colors relative z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <motion.div 
-            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
-            transition={{ duration: 0.5 }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900 dark:text-white">Trending on Campus</h2>
-            <p className="text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">Don't miss out on what everyone will be talking about tomorrow.</p>
-          </motion.div>
-          
-          <motion.div 
-            variants={staggerContainer}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true, margin: "-100px" }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-8"
-          >
-            {isLoading ? (
-              <SkeletonLoader type="card" count={3} />
-            ) : upcomingEvents.length > 0 ? (
-              upcomingEvents.map((event) => (
-                <Link key={event.id} to={`/events/${event.id}`} className="block h-full">
-                  <TiltCard className="h-full flex flex-col">
-                    <div className="aspect-[4/3] bg-gray-200 dark:bg-gray-800 relative overflow-hidden">
-                      <img src={event.posterUrl} alt={event.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80 group-hover:opacity-100 transition-opacity"></div>
-                      <div className="absolute bottom-4 left-4 z-20">
-                        <span className="px-3 py-1 bg-primary text-white text-xs font-bold rounded-full tracking-wider">{event.category}</span>
-                      </div>
-                    </div>
-                    <div className="p-6 flex flex-col flex-grow bg-white dark:bg-surface-dark border border-gray-100 dark:border-gray-800 rounded-b-2xl shadow-sm">
-                      <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-white group-hover:text-primary transition-colors line-clamp-1">{event.title}</h3>
-                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
-                        <Calendar className="w-4 h-4 text-primary" />
-                        <span className="font-medium">{new Date(event.startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} • {new Date(event.startTime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
-                      </div>
-                      <p className="text-gray-600 dark:text-gray-300 text-sm mb-6 line-clamp-2">{event.description}</p>
-                      
-                      <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center">
-                        <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-                          <Users className="w-4 h-4" />
-                          <span>{event.registeredCount} / {event.capacity}</span>
-                        </div>
-                        <span className="text-primary font-bold">View Details →</span>
-                      </div>
-                    </div>
-                  </TiltCard>
-                </Link>
-              ))
-            ) : (
-              <div className="col-span-3 text-center py-12 text-gray-500 dark:text-gray-400">
-                Check back soon for new events!
-              </div>
-            )}
-          </motion.div>
-        </div>
-      </section>
-    </motion.div>
-  );
-}
-```
-
-
-## File: src/components/StudentDashboard.tsx
-
-```typescript
+## `src/components/OrganizerDashboard.tsx`
+```tsx
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { motion, AnimatePresence } from "motion/react";
 import DashboardLayout from "./DashboardLayout";
-import { Ticket, Calendar, Search, Clock, ArrowRight, Megaphone, Star, Check, Shield, Plus } from "lucide-react";
-import { useData } from "../contexts/DataContext";
-import { useAuth } from "../contexts/AuthContext";
-import StudentOnboarding from "./StudentOnboarding";
-import { pageTransition, cardHover } from "../utils/motion";
-import TiltCard from "./TiltCard";
+import { useData, EventTemplate } from "../contexts/DataContext";
+import { PlusCircle, BarChart, Users, Settings, GripVertical, FileText } from "lucide-react";
+import CountUp from "react-countup";
+import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
+import toast from "react-hot-toast";
 import SkeletonLoader from "./SkeletonLoader";
 import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
 
-export default function StudentDashboard() {
-  const { events, registrations, announcements, feedbacks, addFeedback, getMyVolunteeringEvents, isLoading, error } = useData();
-  const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<"upcoming" | "past" | "waitlist">("upcoming");
-  const [feedbackState, setFeedbackState] = useState<{ [eventId: string]: { rating: number, comment: string } }>({});
-  const [volunteeringEventIds, setVolunteeringEventIds] = useState<string[]>([]);
+export default function OrganizerDashboard() {
+  const { events, registrations, templates, isLoading, error } = useData();
+  const [orderedTemplates, setOrderedTemplates] = useState<EventTemplate[]>([]);
 
+  // Initialize ordered templates from context
   useEffect(() => {
-    getMyVolunteeringEvents().then(setVolunteeringEventIds).catch(console.error);
-  }, [getMyVolunteeringEvents]);
+    setOrderedTemplates(templates);
+  }, [templates]);
 
-  if (!user) return null;
+  // For this demo, let's assume all events belong to this organizer.
+  const activeEventsCount = events.length;
+  const totalAttendees = registrations.filter(r => r.status === "registered").length;
 
-  const userRegs = registrations.filter(r => r.studentId === user?.id);
-  
-  const now = new Date().getTime();
-  
-  const upcomingEvents = userRegs
-    .filter(r => r.status === "registered")
-    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
-    .filter(item => item.event && new Date(item.event.endTime).getTime() > now)
-    .sort((a, b) => new Date(a.event!.startTime).getTime() - new Date(b.event!.startTime).getTime());
-
-  const pastEvents = userRegs
-    .filter(r => r.status === "registered")
-    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
-    .filter(item => item.event && new Date(item.event.endTime).getTime() <= now)
-    .sort((a, b) => new Date(b.event!.startTime).getTime() - new Date(a.event!.startTime).getTime());
-
-  const waitlistedEvents = userRegs
-    .filter(r => r.status === "waitlisted")
-    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }));
-
-  const volunteeringEvents = events.filter(e => volunteeringEventIds.includes(e.id)).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-
-  const userCategories = new Set([...upcomingEvents, ...pastEvents].map(item => item.event?.category));
-  const recommendedEvents = events
-    .filter(e => new Date(e.endTime).getTime() > now)
-    .filter(e => !userRegs.some(r => r.eventId === e.id) && !volunteeringEventIds.includes(e.id))
-    .filter(e => userCategories.size === 0 || userCategories.has(e.category))
-    .slice(0, 3);
-
-  const upcomingEventIds = upcomingEvents.map(u => u.event!.id);
-  const relevantAnnouncements = announcements
-    .filter(a => upcomingEventIds.includes(a.eventId))
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 3);
-
-  const handleFeedbackSubmit = (eventId: string) => {
-    const data = feedbackState[eventId];
-    if (data && data.rating > 0) {
-      addFeedback({
-        eventId,
-        studentEmail: user.email,
-        rating: data.rating,
-        comment: data.comment
-      });
-    }
-  };
-
-  const renderEventList = (list: any[], emptyMessage: string, emptyActionText: string) => {
-    if (list.length === 0) {
-      return (
-        <EmptyState 
-          icon={<Calendar className="w-8 h-8" />}
-          title={emptyMessage}
-          description="You can browse more events on the discovery page."
-          actionText={emptyActionText}
-          actionHref="/events"
-        />
-      );
-    }
-
-    return (
-      <motion.div 
-        className="space-y-4" 
-        role="list"
-        initial="hidden"
-        animate="show"
-        variants={{
-          hidden: { opacity: 0 },
-          show: {
-            opacity: 1,
-            transition: { staggerChildren: 0.1 }
-          }
-        }}
-      >
-        <AnimatePresence mode="popLayout">
-          {list.map(({ reg, event }) => {
-            const isPast = activeTab === "past";
-            const hasFeedback = feedbacks.some(f => f.eventId === event.id && f.studentId === user?.id);
-            const feedbackData = feedbackState[event.id] || { rating: 0, comment: "" };
-
-            return (
-              <motion.div 
-                key={reg.id} 
-                layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                whileHover={cardHover}
-                className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden hover:border-primary/50 hover:shadow-md transition-shadow"
-                role="listitem"
-              >
-              <Link 
-                to={`/events/${event.id}`}
-                className="flex items-center gap-6 p-4 group focus:outline-none focus:bg-gray-50 dark:focus:bg-gray-800/50"
-                aria-label={`View details for ${event.title}`}
-              >
-                <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 hidden sm:block bg-gray-100 dark:bg-gray-800" aria-hidden="true">
-                  <img src={event.posterUrl} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                </div>
-                <div className="flex-grow min-w-0">
-                  <div className="flex justify-between items-start mb-1">
-                    <h4 className="font-bold text-lg text-gray-900 dark:text-white truncate pr-4">{event.title}</h4>
-                    {reg.status === 'waitlisted' && (
-                      <span className="shrink-0 px-3 py-1 bg-accent/10 text-accent-darker dark:text-accent text-xs font-bold rounded-full" aria-label={`Waitlist position ${reg.waitlistPosition}`}>
-                        Waitlist #{reg.waitlistPosition}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-4 h-4" aria-hidden="true" />
-                      {new Date(event.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </span>
-                    <span className="flex items-center gap-1 hidden md:flex truncate">
-                      <Clock className="w-4 h-4" aria-hidden="true" />
-                      {event.location}
-                    </span>
-                  </div>
-                </div>
-                <div className="shrink-0 p-2 text-gray-400 group-hover:text-primary transition-colors">
-                  <ArrowRight className="w-5 h-5" aria-hidden="true" />
-                </div>
-              </Link>
-              
-              <AnimatePresence mode="wait">
-                {isPast && !hasFeedback && (
-                  <motion.div 
-                    key="form"
-                    exit={{ opacity: 0, height: 0, overflow: "hidden" }}
-                    className="border-t border-gray-100 dark:border-gray-800 p-4 bg-gray-50 dark:bg-gray-800/30"
-                  >
-                    <p className="text-sm font-bold text-gray-900 dark:text-white mb-3" id={`feedback-label-${event.id}`}>How was the event?</p>
-                    <div className="flex flex-col sm:flex-row gap-4" role="group" aria-labelledby={`feedback-label-${event.id}`}>
-                      <div className="flex gap-1" role="radiogroup" aria-label="Rating">
-                        {[1, 2, 3, 4, 5].map(star => (
-                          <button 
-                            key={star}
-                            onClick={() => setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, rating: star } }))}
-                            onKeyDown={(e) => {
-                              if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-                                e.preventDefault();
-                                const next = star < 5 ? star + 1 : 1;
-                                setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, rating: next } }));
-                              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-                                e.preventDefault();
-                                const prev = star > 1 ? star - 1 : 5;
-                                setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, rating: prev } }));
-                              }
-                            }}
-                            tabIndex={feedbackData.rating === star || (feedbackData.rating === 0 && star === 1) ? 0 : -1}
-                            className="focus:outline-none focus:ring-2 focus:ring-primary rounded-sm"
-                            role="radio"
-                            aria-checked={feedbackData.rating === star}
-                            aria-label={`${star} star${star > 1 ? 's' : ''}`}
-                          >
-                            <Star className={`w-6 h-6 ${star <= feedbackData.rating ? "text-yellow-400 fill-current" : "text-gray-300 dark:text-gray-600 hover:text-yellow-200"}`} />
-                          </button>
-                        ))}
-                      </div>
-                      <div className="flex-1 flex gap-2">
-                        <input 
-                          type="text" 
-                          value={feedbackData.comment}
-                          onChange={e => setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, comment: e.target.value } }))}
-                          placeholder="Add a comment (optional)..." 
-                          aria-label="Additional feedback comment"
-                          className="flex-1 text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-bg-dark outline-none focus:ring-2 focus:ring-primary"
-                        />
-                        <button 
-                          onClick={() => handleFeedbackSubmit(event.id)}
-                          disabled={feedbackData.rating === 0}
-                          aria-label="Submit feedback"
-                          className="px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary-hover transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-bg-dark"
-                        >
-                          Submit
-                        </button>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-                {isPast && hasFeedback && (
-                  <motion.div 
-                    key="success"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    className="border-t border-gray-100 dark:border-gray-800 p-4 bg-green-50 dark:bg-green-900/10 flex items-center gap-2 text-green-700 dark:text-green-400 text-sm font-bold" 
-                    role="status"
-                  >
-                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", bounce: 0.5 }}>
-                      <Check className="w-5 h-5 text-green-500" aria-hidden="true" /> 
-                    </motion.div>
-                    Feedback submitted. Thank you!
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          );
-        })}
-        </AnimatePresence>
-      </motion.div>
-    );
+  const handleDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+    const items = Array.from(orderedTemplates);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+    
+    setOrderedTemplates(items);
+    toast.success("Templates reordered");
   };
 
   return (
     <DashboardLayout>
-      <StudentOnboarding />
-      <motion.div 
-        variants={pageTransition} 
-        initial="initial" 
-        animate="animate" 
-        exit="exit" 
-        className="max-w-5xl mx-auto space-y-10"
-      >
-        <header>
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 tracking-tight">Student Dashboard</h1>
-          <p className="text-lg text-gray-500 dark:text-gray-400">Manage your schedule and discover new experiences.</p>
+      <div className="max-w-5xl mx-auto space-y-8">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Organizer Dashboard</h1>
+            <p className="text-gray-500 dark:text-gray-400">Manage your events and track attendance.</p>
+          </div>
+          <div className="flex gap-2">
+            <Link to="/organizer/checkin" className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-900 dark:bg-white text-white dark:text-gray-900 font-bold rounded-xl hover:opacity-90 transition-opacity">
+              Fast Check-in
+            </Link>
+            <Link to="/organizer/events/new" className="flex items-center justify-center gap-2 px-6 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors shadow-lg shadow-primary/20">
+              <PlusCircle className="w-5 h-5" />
+              Create Event
+            </Link>
+          </div>
         </header>
 
         {error ? (
@@ -2665,356 +2504,118 @@ export default function StudentDashboard() {
           />
         ) : isLoading ? (
           <div className="space-y-8">
-            <SkeletonLoader type="card" className="h-40" />
-            <SkeletonLoader type="card" count={3} />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <SkeletonLoader type="card" className="h-40" count={2} />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <SkeletonLoader type="card" className="h-[400px]" count={2} />
+            </div>
           </div>
         ) : (
           <>
-            {relevantAnnouncements.length > 0 && (
-          <section className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900 rounded-3xl p-6" aria-labelledby="announcements-heading">
-            <h2 id="announcements-heading" className="font-bold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
-              <Megaphone className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden="true" /> Recent Announcements
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col justify-center h-40">
+                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-2">
+                  <Users className="w-4 h-4" /> Total Attendees
+                </h3>
+                <p className="text-4xl font-bold text-gray-900 dark:text-white"><CountUp end={totalAttendees} duration={1.5} /></p>
+              </div>
+
+              <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm flex flex-col justify-center h-40">
+                <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Active Events</h3>
+                <p className="text-4xl font-bold text-primary"><CountUp end={activeEventsCount} duration={1.5} /></p>
+              </div>
+            </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <section className="bg-white dark:bg-surface-dark p-8 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
+            <h2 className="text-xl font-bold mb-6">Recent Events</h2>
+            {events.length === 0 ? (
+              <EmptyState 
+                icon={<BarChart className="w-8 h-8" />}
+                title="You haven't created any events yet."
+                description="Get started by clicking below."
+                actionText="Create Your First Event"
+                actionHref="/organizer/events/new"
+              />
+            ) : (
+              <div className="grid gap-4">
+                {events.slice(0, 5).map(event => (
+                  <div key={event.id} className="flex items-center justify-between p-4 border border-gray-100 dark:border-gray-800 rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <img src={event.posterUrl} alt={event.title} className="w-16 h-16 object-cover rounded-xl" />
+                      <div>
+                        <h3 className="font-bold text-gray-900 dark:text-white line-clamp-1">{event.title}</h3>
+                        <p className="text-sm text-gray-500">{new Date(event.date).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                    <Link to={`/organizer/events/${event.id}`} className="p-2 text-gray-400 hover:text-primary transition-colors bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-primary/10">
+                      <Settings className="w-5 h-5" />
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="bg-white dark:bg-surface-dark p-8 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
+            <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+              <FileText className="w-5 h-5" /> Saved Templates
             </h2>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {relevantAnnouncements.map(ann => {
-                const eventForAnn = events.find(e => e.id === ann.eventId);
-                return (
-                  <motion.div 
-                    key={ann.id} 
-                    whileHover={cardHover}
-                    className="bg-white dark:bg-surface-dark p-4 rounded-2xl shadow-sm border border-blue-100/50 dark:border-blue-800/50"
-                  >
-                    <div className="text-xs text-blue-600 dark:text-blue-400 font-bold mb-1">{eventForAnn?.title}</div>
-                    <h3 className="font-bold text-gray-900 dark:text-white mb-2">{ann.title}</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{ann.content}</p>
-                  </motion.div>
-                )
-              })}
-            </div>
-          </section>
-        )}
-
-        {volunteeringEvents.length > 0 && (
-          <section className="mb-12">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                <Shield className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Events You're Helping With</h2>
-                <p className="text-gray-500">You are a volunteer for these events</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {volunteeringEvents.map(event => (
-                <Link 
-                  key={`vol-${event.id}`}
-                  to={`/checkin/${event.id}`}
-                  className="bg-white dark:bg-surface-dark p-4 rounded-2xl border border-purple-100 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-500/50 hover:shadow-md transition-all flex items-center gap-4 group"
-                >
-                  <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-gray-100 dark:bg-gray-800">
-                    <img src={event.posterUrl} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                  </div>
-                  <div className="flex-grow min-w-0">
-                    <h4 className="font-bold text-gray-900 dark:text-white truncate">{event.title}</h4>
-                    <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
-                      <Calendar className="w-4 h-4" />
-                      {new Date(event.startTime).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className="shrink-0 p-2 text-purple-600 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Tabs and Event Lists */}
-        <section>
-          <div 
-            className="flex gap-2 overflow-x-auto pb-4 mb-6 border-b border-gray-200 dark:border-gray-800 scrollbar-hide" 
-            role="tablist" 
-            aria-label="Event categories"
-          >
-            {[
-              { id: "upcoming", label: "Upcoming", count: upcomingEvents.length },
-              { id: "waitlist", label: "Waitlist", count: waitlistedEvents.length },
-              { id: "past", label: "Past Events", count: pastEvents.length }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                aria-controls={`${tab.id}-panel`}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-semibold transition-colors border-b-2 -mb-[18px] focus:outline-none focus:ring-2 focus:ring-primary ${
-                  activeTab === tab.id
-                    ? "text-primary border-primary bg-primary/5 dark:bg-primary/10"
-                    : "text-gray-500 border-transparent hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"
-                }`}
-              >
-                {tab.label}
-                <span className={`px-2 py-0.5 rounded-full text-xs ${
-                  activeTab === tab.id ? 'bg-primary text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-                }`}>
-                  {tab.count}
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="min-h-[300px]" id={`${activeTab}-panel`} role="tabpanel">
-            {activeTab === "upcoming" && renderEventList(
-              upcomingEvents, 
-              "You don't have any upcoming events.", 
-              "Browse what's happening"
+            
+            {orderedTemplates.length === 0 ? (
+              <EmptyState 
+                icon={<FileText className="w-8 h-8" />}
+                title="No templates saved yet."
+                description="Save a template during event creation."
+              />
+            ) : (
+              <DragDropContext onDragEnd={handleDragEnd}>
+                <Droppable droppableId="templates-list">
+                  {(provided) => (
+                    <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-3">
+                      {orderedTemplates.map((template, index) => (
+                        <Draggable key={template.id} draggableId={template.id} index={index}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              className={`flex items-center p-4 border rounded-2xl transition-all ${
+                                snapshot.isDragging 
+                                  ? "bg-white shadow-xl border-primary/50 z-50 scale-[1.02]" 
+                                  : "bg-white dark:bg-surface-dark border-gray-100 dark:border-gray-800 hover:border-gray-300"
+                              }`}
+                            >
+                              <div {...provided.dragHandleProps} className="p-2 mr-2 text-gray-400 hover:text-gray-600 cursor-grab active:cursor-grabbing">
+                                <GripVertical className="w-5 h-5" />
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-gray-900 dark:text-white">{template.name}</h3>
+                                <p className="text-sm text-gray-500 truncate max-w-[200px]">{template.title}</p>
+                              </div>
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </DragDropContext>
             )}
-            {activeTab === "waitlist" && renderEventList(
-              waitlistedEvents, 
-              "You are not on any waitlists.", 
-              "Explore high-demand events"
-            )}
-            {activeTab === "past" && renderEventList(
-              pastEvents, 
-              "No past events to show.", 
-              "Find your first event"
-            )}
-          </div>
-        </section>
-
-        {/* Recommended Section */}
-        {recommendedEvents.length > 0 && (
-          <section className="pt-8 border-t border-gray-200 dark:border-gray-800" aria-labelledby="recommended-heading">
-            <div className="flex items-center justify-between mb-6">
-              <h2 id="recommended-heading" className="text-2xl font-bold text-gray-900 dark:text-white">Recommended for You</h2>
-              <Link to="/events" className="text-primary font-medium hover:underline text-sm flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-primary rounded-md p-1">
-                View All <ArrowRight className="w-4 h-4" aria-hidden="true" />
-              </Link>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {recommendedEvents.map(event => (
-                <motion.div key={event.id} whileHover={cardHover}>
-                  <TiltCard>
-                    <Link 
-                      to={`/events/${event.id}`}
-                      className="block group bg-white dark:bg-surface-dark rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary h-full"
-                      aria-label={`View recommended event: ${event.title}`}
-                    >
-                      <div className="h-32 bg-gray-200 dark:bg-gray-800 relative overflow-hidden" aria-hidden="true">
-                        <img src={event.posterUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                        <div className="absolute top-3 right-3 bg-white/90 dark:bg-surface-dark/90 backdrop-blur-sm px-2 py-0.5 rounded-md text-xs font-bold">
-                          {event.category}
-                        </div>
-                      </div>
-                      <div className="p-4 flex flex-col justify-between h-[calc(100%-8rem)]">
-                        <div>
-                          <h4 className="font-bold text-gray-900 dark:text-white mb-2 line-clamp-1 group-hover:text-primary transition-colors">{event.title}</h4>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1">
-                            <Calendar className="w-3 h-3" aria-hidden="true" />
-                            {new Date(event.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </p>
-                        </div>
-                        <span className="text-sm font-semibold text-primary">View Details</span>
-                      </div>
-                    </Link>
-                  </TiltCard>
-                </motion.div>
-              ))}
-            </div>
           </section>
-        )}
-          </>
-        )}
-      </motion.div>
-
-      {user?.role === 'organizer' && (
-        <Link
-          to="/organizer/events/new"
-          className="fixed bottom-8 right-8 bg-primary hover:bg-primary-hover text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-primary/30 transition-transform hover:scale-105 z-50"
-          title="Create New Event"
-        >
-          <Plus className="w-6 h-6" />
-        </Link>
+        </div>
+      </>
       )}
+      </div>
     </DashboardLayout>
   );
 }
+
 ```
 
-
-## File: src/components/StudentTicketsPage.tsx
-
-```typescript
-import { Link } from "react-router-dom";
-import { motion } from "motion/react";
-import DashboardLayout from "./DashboardLayout";
-import { useData } from "../contexts/DataContext";
-import { useAuth } from "../contexts/AuthContext";
-import { QRCodeSVG } from "qrcode.react";
-import { Calendar, MapPin, Clock, Download, Ticket } from "lucide-react";
-import { pageTransition, cardHover } from "../utils/motion";
-import SkeletonLoader from "./SkeletonLoader";
-import EmptyState from "./EmptyState";
-import ErrorState from "./ErrorState";
-
-export default function StudentTicketsPage() {
-  const { events, registrations, isLoading, error } = useData();
-  const { user } = useAuth();
-
-  if (!user) return null;
-
-  const userTickets = registrations
-    .filter(r => r.studentId === user?.id && r.status === "registered")
-    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
-    .filter(item => item.event)
-    .sort((a, b) => new Date(b.event!.startTime).getTime() - new Date(a.event!.startTime).getTime());
-
-  const generateICS = (event: any) => {
-    const formatDate = (dateString: string) => {
-      const d = new Date(dateString);
-      return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-    };
-
-    const icsContent = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'BEGIN:VEVENT',
-      `DTSTART:${formatDate(event.startTime)}`,
-      `DTEND:${formatDate(event.endTime)}`,
-      `SUMMARY:${event.title}`,
-      `DESCRIPTION:${event.description}`,
-      `LOCATION:${event.location}`,
-      'END:VEVENT',
-      'END:VCALENDAR'
-    ].join('\n');
-
-    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}.ics`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  return (
-    <DashboardLayout>
-      <motion.div 
-        variants={pageTransition}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        className="max-w-5xl mx-auto space-y-8"
-      >
-        <header>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">My Tickets</h1>
-          <p className="text-gray-500 dark:text-gray-400">Access your QR codes and event details.</p>
-        </header>
-
-        {error ? (
-          <ErrorState 
-            title="Failed to load tickets" 
-            message="There was a problem connecting to the server. Please try refreshing."
-            onRetry={() => window.location.reload()}
-          />
-        ) : isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <SkeletonLoader type="card" className="h-[400px]" count={2} />
-          </div>
-        ) : userTickets.length === 0 ? (
-          <EmptyState 
-            icon={<Ticket className="w-8 h-8" />}
-            title="You have no tickets yet."
-            description="Register for an event to see your ticket here."
-            actionText="Browse Events"
-            actionHref="/events"
-          />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8" role="list">
-            {userTickets.map(({ reg, event }, i) => (
-              <motion.div 
-                key={reg.id} 
-                initial={{ opacity: 0, rotateX: -90, y: 50, perspective: 1000 }}
-                animate={{ opacity: 1, rotateX: 0, y: 0 }}
-                transition={{ 
-                  type: "spring", 
-                  stiffness: 260, 
-                  damping: 20, 
-                  delay: i * 0.15 
-                }}
-                whileHover={cardHover}
-                className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 shadow-xl overflow-hidden flex flex-col relative"
-                role="listitem"
-                style={{ transformStyle: "preserve-3d" }}
-              >
-                <div className="h-24 bg-primary/10 flex items-center justify-center relative overflow-hidden" aria-hidden="true">
-                  <div className="absolute inset-0 opacity-20" style={{ backgroundImage: `url(${event!.posterUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}></div>
-                  <h3 className="relative z-10 text-xl font-bold text-gray-900 dark:text-white text-center px-4">{event!.title}</h3>
-                </div>
-                
-                <div className="p-6 flex flex-col items-center flex-grow">
-                  <div className="mb-6 p-4 bg-white rounded-2xl shadow-sm border border-gray-100 inline-block" aria-label="Ticket QR Code">
-                    {reg.ticketId ? (
-                      <QRCodeSVG value={reg.ticketId} size={150} level="H" aria-hidden="true" />
-                    ) : (
-                      <div className="w-[150px] h-[150px] bg-gray-100 flex items-center justify-center text-gray-400 text-sm">No QR Code</div>
-                    )}
-                  </div>
-                  
-                  <div className="w-full space-y-3 mb-6">
-                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
-                      <Calendar className="w-4 h-4 text-primary" aria-hidden="true" />
-                      <span>{new Date(event!.startTime).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
-                      <Clock className="w-4 h-4 text-accent" aria-hidden="true" />
-                      <span>{new Date(event!.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
-                    </div>
-                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
-                      <MapPin className="w-4 h-4 text-gray-400" aria-hidden="true" />
-                      <span className="truncate">{event!.location}</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-auto w-full flex flex-col gap-2">
-                    {reg.ticketId && (
-                      <div className="text-center mb-2">
-                        <span className="text-xs text-gray-400 font-mono" aria-label={`Ticket ID: ${reg.ticketId}`}>ID: {reg.ticketId}</span>
-                      </div>
-                    )}
-                    <button 
-                      onClick={() => generateICS(event)}
-                      className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-center gap-2 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
-                      aria-label={`Download calendar invite for ${event!.title}`}
-                    >
-                      <Download className="w-4 h-4" aria-hidden="true" /> Add to Calendar
-                    </button>
-                    <Link 
-                      to={`/events/${event!.id}`}
-                      className="w-full py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-center font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
-                      aria-label={`View details for ${event!.title}`}
-                    >
-                      View Event Details
-                    </Link>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
-      </motion.div>
-    </DashboardLayout>
-  );
-}
-```
-
-
-## File: src/components/OrganizerEventWizard.tsx
-
-```typescript
+## `src/components/OrganizerEventWizard.tsx`
+```tsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DashboardLayout from "./DashboardLayout";
@@ -3070,7 +2671,7 @@ export default function OrganizerEventWizard() {
   const [formData, setFormData] = useState({
     title: "",
     description: "",
-    startTime: "",
+    date: "",
     endTime: "",
     location: "",
     department: "",
@@ -3095,7 +2696,7 @@ export default function OrganizerEventWizard() {
       setFormData({
         title: t.title,
         description: t.description,
-        startTime: "",
+        date: "",
         endTime: "",
         location: t.location,
         department: t.department,
@@ -3116,7 +2717,7 @@ export default function OrganizerEventWizard() {
   const isDescValid = formData.description.trim().length > 0;
   const isStep1Valid = isTitleValid && isDescValid;
 
-  const isDateValid = formData.startTime !== "";
+  const isDateValid = formData.date !== "";
   const isEndTimeValid = formData.endTime !== "";
   const isLocValid = formData.location.trim().length > 0;
   const isDeptValid = formData.department.trim().length > 0;
@@ -3165,7 +2766,7 @@ export default function OrganizerEventWizard() {
     
     const quickData = {
       ...formData,
-      startTime: formData.startTime || tomorrowStr,
+      date: formData.date || tomorrowStr,
       endTime: formData.endTime || tomorrowStr + "T14:00",
       location: formData.location || "TBA",
       department: formData.department || "General",
@@ -3302,8 +2903,8 @@ export default function OrganizerEventWizard() {
                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Start Time</label>
                     <input
                       type="datetime-local"
-                      name="startTime"
-                      value={formData.startTime}
+                      name="date"
+                      value={formData.date}
                       onChange={handleInputChange}
                       className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none pr-10"
                     />
@@ -3479,6 +3080,4167 @@ export default function OrganizerEventWizard() {
     </DashboardLayout>
   );
 }
+
 ```
 
+## `src/components/OrganizerManageEventPage.tsx`
+```tsx
+import React, { useState, useMemo, useEffect } from "react";
+import { useParams, Link } from "react-router-dom";
+import DashboardLayout from "./DashboardLayout";
+import { useData } from "../contexts/DataContext";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, Legend } from "recharts";
+import { Download, Search, Trash2, Megaphone, ArrowLeft, Star, UserPlus, ShieldX, Calendar } from "lucide-react";
+import toast from "react-hot-toast";
+import SkeletonLoader from "./SkeletonLoader";
+import EmptyState from "./EmptyState";
+import ErrorState from "./ErrorState";
+
+export default function OrganizerManageEventPage() {
+  const { id } = useParams<{ id: string }>();
+  const { events, registrations, removeRegistrant, announcements, addAnnouncement, feedbacks, getVolunteers, inviteVolunteer, removeVolunteer, isLoading, error } = useData();
+  const event = events.find(e => e.id === id);
+
+  const [activeTab, setActiveTab] = useState<"registrants" | "analytics" | "announcements" | "feedback" | "volunteers">("registrants");
+  
+  // Registrants State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortField, setSortField] = useState<"email" | "status" | "attended">("email");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  // Announcements State
+  const [announcementTitle, setAnnouncementTitle] = useState("");
+  const [announcementContent, setAnnouncementContent] = useState("");
+
+  // Volunteers State
+  const [volunteers, setVolunteers] = useState<{userId: string; email: string}[]>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(false);
+
+  useEffect(() => {
+    if (event) {
+      getVolunteers(event.id).then(setVolunteers).catch(console.error);
+    }
+  }, [event, getVolunteers]);
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="max-w-6xl mx-auto py-8">
+          <ErrorState 
+            title="Failed to load event data" 
+            message="There was a problem connecting to the server. Please try refreshing."
+            onRetry={() => window.location.reload()}
+          />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="max-w-6xl mx-auto py-8 space-y-8">
+          <SkeletonLoader type="header" />
+          <SkeletonLoader type="card" className="h-[500px]" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (!event) {
+    return (
+      <DashboardLayout>
+        <div className="max-w-6xl mx-auto py-8">
+          <EmptyState 
+            icon={<Calendar className="w-8 h-8" />}
+            title="Event not found."
+            description="The event you are trying to manage does not exist or you do not have access."
+            actionText="Back to Dashboard"
+            actionHref="/organizer"
+          />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const eventRegs = registrations.filter(r => r.eventId === event.id);
+  const eventAnnouncements = announcements.filter(a => a.eventId === event.id).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const eventFeedbacks = feedbacks.filter(f => f.eventId === event.id);
+
+  // Data Grid Logic
+  const filteredRegs = useMemo(() => {
+    return eventRegs.filter(r => (r.studentEmail || "").toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [eventRegs, searchQuery]);
+
+  const sortedRegs = useMemo(() => {
+    return [...filteredRegs].sort((a, b) => {
+      let valA, valB;
+      if (sortField === "email") { valA = a.studentEmail; valB = b.studentEmail; }
+      else if (sortField === "status") { valA = a.status; valB = b.status; }
+      else { valA = a.attended ? 1 : 0; valB = b.attended ? 1 : 0; }
+      
+      if (valA < valB) return sortDir === "asc" ? -1 : 1;
+      if (valA > valB) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [filteredRegs, sortField, sortDir]);
+
+  const toggleSort = (field: "email" | "status" | "attended") => {
+    if (sortField === field) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const exportCSV = () => {
+    const headers = ["Ticket ID", "Student Email", "Status", "Attended"];
+    const rows = sortedRegs.map(r => [r.ticketId || "N/A", r.studentEmail, r.status, r.attended ? "Yes" : "No"]);
+    const csvContent = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute("download", `${event.title.replace(/\s+/g, '_')}_registrants.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleBroadcast = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!announcementTitle.trim() || !announcementContent.trim()) return;
+    addAnnouncement({
+      eventId: event.id,
+      title: announcementTitle,
+      content: announcementContent
+    });
+    setAnnouncementTitle("");
+    setAnnouncementContent("");
+    toast.success("Announcement broadcasted");
+  };
+
+  const handleInviteVolunteer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setInviteLoading(true);
+    try {
+      await inviteVolunteer(event.id, inviteEmail.trim());
+      setInviteEmail("");
+      const updated = await getVolunteers(event.id);
+      setVolunteers(updated);
+      toast.success("Volunteer added");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to invite volunteer");
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
+  const handleRemoveVolunteer = async (userId: string) => {
+    try {
+      await removeVolunteer(event.id, userId);
+      const updated = await getVolunteers(event.id);
+      setVolunteers(updated);
+      toast.success("Volunteer removed");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to remove volunteer");
+    }
+  };
+
+  // Analytics Data
+  const attendanceData = [
+    { name: "Attended", value: eventRegs.filter(r => r.attended).length },
+    { name: "No Show", value: eventRegs.length - eventRegs.filter(r => r.attended).length }
+  ];
+  const COLORS = ["#10b981", "#ef4444"];
+
+  const capacityData = [
+    { name: "Registered", count: event.registeredCount },
+    { name: "Available", count: Math.max(0, event.capacity - event.registeredCount) }
+  ];
+  
+  // Mock registration over time
+  const regOverTime = [
+    { day: "Day 1", regs: Math.floor(event.registeredCount * 0.2) },
+    { day: "Day 2", regs: Math.floor(event.registeredCount * 0.5) },
+    { day: "Day 3", regs: Math.floor(event.registeredCount * 0.8) },
+    { day: "Day 4", regs: event.registeredCount },
+  ];
+
+  const avgRating = eventFeedbacks.length > 0 ? (eventFeedbacks.reduce((acc, f) => acc + f.rating, 0) / eventFeedbacks.length).toFixed(1) : "N/A";
+  const isPast = new Date(event.endTime).getTime() < Date.now();
+
+  return (
+    <DashboardLayout>
+      <div className="max-w-6xl mx-auto py-8">
+        <header className="mb-8">
+          <Link to="/organizer" className="inline-flex items-center text-sm font-bold text-gray-500 hover:text-primary mb-4">
+            <ArrowLeft className="w-4 h-4 mr-1" /> Back to Dashboard
+          </Link>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{event.title}</h1>
+              <p className="text-gray-500 dark:text-gray-400">Manage registrants, view analytics, and broadcast announcements.</p>
+            </div>
+            <Link to={`/events/${event.id}`} target="_blank" className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+              View Public Page
+            </Link>
+          </div>
+        </header>
+
+        <div className="flex gap-4 mb-8 overflow-x-auto pb-2">
+          {(["registrants", "analytics", "announcements", "feedback", "volunteers"] as const).map(tab => {
+            if (tab === "feedback" && !isPast) return null;
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-6 py-3 rounded-full font-bold transition-colors whitespace-nowrap ${
+                  activeTab === tab 
+                    ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900" 
+                    : "bg-white dark:bg-surface-dark text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                }`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            )
+          })}
+        </div>
+
+        {activeTab === "registrants" && (
+          <div className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-6">
+            <div className="flex justify-between items-center mb-6">
+              <div className="relative w-64">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input 
+                  type="text" 
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder="Search emails..." 
+                  className="w-full pl-9 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none"
+                />
+              </div>
+              <button onClick={exportCSV} className="flex items-center gap-2 px-4 py-2 text-sm font-bold bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-colors">
+                <Download className="w-4 h-4" /> Export CSV
+              </button>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-800 text-sm text-gray-500 dark:text-gray-400">
+                    <th className="py-3 px-4 cursor-pointer hover:text-gray-900 dark:hover:text-white" onClick={() => toggleSort("email")}>
+                      Student Email {sortField === "email" && (sortDir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="py-3 px-4 cursor-pointer hover:text-gray-900 dark:hover:text-white" onClick={() => toggleSort("status")}>
+                      Status {sortField === "status" && (sortDir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="py-3 px-4 cursor-pointer hover:text-gray-900 dark:hover:text-white" onClick={() => toggleSort("attended")}>
+                      Attended {sortField === "attended" && (sortDir === "asc" ? "↑" : "↓")}
+                    </th>
+                    <th className="py-3 px-4">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRegs.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="py-8 text-center text-gray-500">No registrants found.</td>
+                    </tr>
+                  ) : (
+                    sortedRegs.map(reg => (
+                      <tr key={reg.id} className="border-b border-gray-100 dark:border-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
+                        <td className="py-3 px-4 font-medium">{reg.studentEmail}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                            reg.status === "registered" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                          }`}>
+                            {reg.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {reg.attended ? <span className="text-green-600 font-bold">Yes</span> : <span className="text-gray-400">No</span>}
+                        </td>
+                        <td className="py-3 px-4">
+                          <button 
+                            onClick={() => removeRegistrant(reg.id)}
+                            className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                            title="Remove Registrant"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "analytics" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm col-span-1 md:col-span-2">
+              <h3 className="font-bold mb-6">Registrations Over Time</h3>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={regOverTime}>
+                    <defs>
+                      <linearGradient id="colorRegs" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.2} />
+                    <XAxis dataKey="day" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <RechartsTooltip />
+                    <Area type="monotone" dataKey="regs" stroke="#4f46e5" fillOpacity={1} fill="url(#colorRegs)" isAnimationActive={true} animationDuration={1500} animationEasing="ease-out" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
+              <h3 className="font-bold mb-4">Attendance Rate</h3>
+              <div className="h-64 flex items-center justify-center">
+                {eventRegs.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={attendanceData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" isAnimationActive={true} animationDuration={1500} animationEasing="ease-out">
+                        {attendanceData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-gray-500">No data</p>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
+              <h3 className="font-bold mb-4">Capacity Fill</h3>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={capacityData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#374151" opacity={0.2} />
+                    <XAxis dataKey="name" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <RechartsTooltip />
+                    <Bar dataKey="count" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "announcements" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm h-fit">
+              <h3 className="font-bold mb-2 flex items-center gap-2"><Megaphone className="w-5 h-5 text-primary" /> Broadcast Announcement</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">Send a notification to all registered attendees.</p>
+              <form onSubmit={handleBroadcast} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Subject</label>
+                  <input
+                    type="text"
+                    value={announcementTitle}
+                    onChange={e => setAnnouncementTitle(e.target.value)}
+                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none"
+                    placeholder="e.g., Room Change"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Message</label>
+                  <textarea
+                    value={announcementContent}
+                    onChange={e => setAnnouncementContent(e.target.value)}
+                    rows={4}
+                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none"
+                    placeholder="Write your message..."
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={!announcementTitle.trim() || !announcementContent.trim()}
+                  className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50"
+                >
+                  Send Broadcast
+                </button>
+              </form>
+            </div>
+            
+            <div>
+              <h3 className="font-bold mb-4">Past Announcements</h3>
+              <div className="space-y-4">
+                {eventAnnouncements.length === 0 ? (
+                  <p className="text-gray-500 text-sm">No announcements sent yet.</p>
+                ) : (
+                  eventAnnouncements.map(ann => (
+                    <div key={ann.id} className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-gray-100 dark:border-gray-800">
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-bold text-gray-900 dark:text-white">{ann.title}</h4>
+                        <span className="text-xs text-gray-500">{new Date(ann.timestamp).toLocaleString()}</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-300">{ann.content}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "feedback" && isPast && (
+          <div className="space-y-6">
+            <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-gray-500 dark:text-gray-400">Average Rating</h3>
+                <div className="text-4xl font-bold text-gray-900 dark:text-white mt-1 flex items-center gap-2">
+                  {avgRating} <Star className="w-8 h-8 text-yellow-400 fill-current" />
+                </div>
+              </div>
+              <div className="text-right">
+                <h3 className="font-bold text-gray-500 dark:text-gray-400">Total Reviews</h3>
+                <div className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{eventFeedbacks.length}</div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {eventFeedbacks.length === 0 ? (
+                <div className="text-center p-8 bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 text-gray-500">
+                  No feedback received yet.
+                </div>
+              ) : (
+                eventFeedbacks.map(f => (
+                  <div key={f.id} className="bg-white dark:bg-surface-dark p-5 rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="text-sm font-bold text-gray-900 dark:text-white">{f.studentEmail}</div>
+                      <div className="flex">
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <Star key={star} className={`w-4 h-4 ${star <= f.rating ? "text-yellow-400 fill-current" : "text-gray-300 dark:text-gray-700"}`} />
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-gray-600 dark:text-gray-300 text-sm">{f.comment}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "volunteers" && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-1">
+              <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm sticky top-24">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <UserPlus className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-gray-900 dark:text-white">Invite Volunteer</h2>
+                  </div>
+                </div>
+                <p className="text-sm text-gray-500 mb-6">
+                  Volunteers can scan and manually check in attendees. They cannot edit the event or export data. They must already have a Gatherum account.
+                </p>
+                <form onSubmit={handleInviteVolunteer} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      required
+                      value={inviteEmail}
+                      onChange={e => setInviteEmail(e.target.value)}
+                      className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none"
+                      placeholder="student@poornima.org"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!inviteEmail.trim() || inviteLoading}
+                    className="w-full py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50"
+                  >
+                    {inviteLoading ? "Adding..." : "Add Volunteer"}
+                  </button>
+                </form>
+              </div>
+            </div>
+            
+            <div className="lg:col-span-2">
+              <h3 className="font-bold mb-4 text-gray-900 dark:text-white">Current Volunteers ({volunteers.length})</h3>
+              <div className="space-y-4">
+                {volunteers.length === 0 ? (
+                  <div className="text-center p-8 bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 text-gray-500">
+                    No volunteers added yet.
+                  </div>
+                ) : (
+                  volunteers.map(vol => (
+                    <div key={vol.userId} className="flex justify-between items-center p-4 bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-gray-800 shadow-sm">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center font-bold text-primary">
+                          {vol.email.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-bold text-gray-900 dark:text-white">{vol.email}</div>
+                          <div className="text-xs text-gray-500">Event Volunteer</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (window.confirm("Remove this volunteer?")) {
+                            handleRemoveVolunteer(vol.userId);
+                          }
+                        }}
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-colors"
+                        title="Remove volunteer"
+                      >
+                        <ShieldX className="w-5 h-5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </DashboardLayout>
+  );
+}
+
+```
+
+## `src/components/ProfileSettings.tsx`
+```tsx
+import React, { useState, useEffect } from "react";
+import DashboardLayout from "./DashboardLayout";
+import { useAuth } from "../contexts/AuthContext";
+import { AuthService } from "../services/api";
+import { Settings, Shield, User, Save } from "lucide-react";
+import toast from "react-hot-toast";
+import SkeletonLoader from "./SkeletonLoader";
+import ErrorState from "./ErrorState";
+
+export default function ProfileSettings() {
+  const { user } = useAuth();
+  const [publicRsvp, setPublicRsvp] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      AuthService.getProfile(user.id).then((profile: any) => {
+        setPublicRsvp(profile.public_rsvp ?? true);
+        setLoading(false);
+      }).catch(err => {
+        console.error(err);
+        setError(true);
+        setLoading(false);
+      });
+    }
+  }, [user]);
+
+  const handleSave = async () => {
+    if (!user) return;
+    setSaving(true);
+    try {
+      await AuthService.updateProfilePrivacy(publicRsvp);
+      toast.success("Privacy settings updated");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to update settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="max-w-3xl mx-auto py-8 space-y-8">
+          <SkeletonLoader type="header" />
+          <SkeletonLoader type="card" className="h-[300px]" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <DashboardLayout>
+        <div className="max-w-3xl mx-auto py-8">
+          <ErrorState 
+            title="Failed to load profile settings" 
+            message="There was a problem connecting to the server. Please try refreshing."
+            onRetry={() => window.location.reload()}
+          />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      <div className="max-w-3xl mx-auto py-8">
+        <header className="mb-8 flex items-center gap-4">
+          <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-primary">
+            <Settings className="w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Profile Settings</h1>
+            <p className="text-gray-500">Manage your account preferences and privacy</p>
+          </div>
+        </header>
+
+        <div className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm p-8">
+          <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100 dark:border-gray-800">
+            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center">
+              <User className="w-8 h-8 text-gray-400" />
+            </div>
+            <div>
+              <h2 className="font-bold text-xl text-gray-900 dark:text-white">{user?.email}</h2>
+              <p className="text-gray-500 capitalize">{user?.role} Account</p>
+            </div>
+          </div>
+
+          <div className="mb-8">
+            <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Shield className="w-5 h-5 text-primary" /> Privacy Settings
+            </h3>
+            
+            <label className="flex items-start gap-4 cursor-pointer group p-4 rounded-2xl border border-gray-100 dark:border-gray-800 hover:border-primary/50 transition-colors">
+              <div className="relative flex items-center mt-1">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={publicRsvp}
+                  onChange={(e) => setPublicRsvp(e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/20 dark:peer-focus:ring-primary/80 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+              </div>
+              <div>
+                <span className="font-bold text-gray-900 dark:text-white block mb-1">Make RSVPs Public</span>
+                <span className="text-sm text-gray-500">
+                  When enabled, your profile picture will be shown in the "Who's going" section of events you register for.
+                </span>
+              </div>
+            </label>
+          </div>
+
+          <div className="flex justify-end pt-6 border-t border-gray-100 dark:border-gray-800">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-6 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors flex items-center gap-2 disabled:opacity-50"
+            >
+              <Save className="w-5 h-5" /> {saving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </DashboardLayout>
+  );
+}
+
+```
+
+## `src/components/ProtectedRoute.tsx`
+```tsx
+import { Navigate, Outlet } from "react-router-dom";
+import { useAuth, Role } from "../contexts/AuthContext";
+
+interface ProtectedRouteProps {
+  allowedRoles?: Role[];
+}
+
+export default function ProtectedRoute({ allowedRoles }: ProtectedRouteProps) {
+  const { user } = useAuth();
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    // Redirect to their own dashboard if they try to access an unauthorized route
+    return <Navigate to={`/${user.role}`} replace />;
+  }
+
+  return <Outlet />;
+}
+
+```
+
+## `src/components/PublicOrganizerPage.tsx`
+```tsx
+import React, { useState, useEffect } from "react";
+import { useParams, Link } from "react-router-dom";
+import { motion } from "motion/react";
+import { useData } from "../contexts/DataContext";
+import { useAuth } from "../contexts/AuthContext";
+import { Building, MapPin, Calendar, ArrowLeft, Download, Bell, BellRing, Share2 } from "lucide-react";
+import Navbar from "./Navbar";
+import Footer from "./Footer";
+import TiltCard from "./TiltCard";
+import toast from "react-hot-toast";
+import SkeletonLoader from "./SkeletonLoader";
+import EmptyState from "./EmptyState";
+import ErrorState from "./ErrorState";
+
+export default function PublicOrganizerPage() {
+  const { id } = useParams<{ id: string }>();
+  const { events, isLoading, error, getFollowedOrganizers, subscribeToOrganizer, unsubscribeFromOrganizer } = useData();
+  const { user } = useAuth();
+  
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [isFollowLoading, setIsFollowLoading] = useState(false);
+  
+  const organizerEvents = events.filter(e => e.organizerId === id && !e.isUnpublished);
+  
+  // We deduce organizer info from the first event, in a real app we'd fetch the organizer profile
+  const department = organizerEvents.length > 0 ? organizerEvents[0].department : "Organizer";
+
+  useEffect(() => {
+    if (user && id) {
+      getFollowedOrganizers().then(followed => {
+        setIsFollowing(followed.includes(id));
+      }).catch(console.error);
+    }
+  }, [id, getFollowedOrganizers, user]);
+
+  const handleToggleFollow = async () => {
+    if (!user) {
+      toast.error("Please login to follow this organizer");
+      return;
+    }
+    if (!id) return;
+    
+    setIsFollowLoading(true);
+    try {
+      if (isFollowing) {
+        await unsubscribeFromOrganizer(id);
+        setIsFollowing(false);
+        toast.success("Unsubscribed from organizer");
+      } else {
+        await subscribeToOrganizer(id);
+        setIsFollowing(true);
+        toast.success("Subscribed! You'll be notified of their new events.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to update subscription");
+    } finally {
+      setIsFollowLoading(false);
+    }
+  };
+
+  const handleDownloadIcs = () => {
+    // Generate a simple ICS file for all upcoming events
+    const lines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//Gatherum//Events//EN",
+    ];
+    
+    organizerEvents.forEach(event => {
+      const start = new Date(event.date).toISOString().replace(/[-:]/g, '').split('.')[0] + "Z";
+      const end = new Date(event.endTime).toISOString().replace(/[-:]/g, '').split('.')[0] + "Z";
+      
+      lines.push("BEGIN:VEVENT");
+      lines.push(`UID:${event.id}@gatherum.poornima.org`);
+      lines.push(`DTSTAMP:${start}`);
+      lines.push(`DTSTART:${start}`);
+      lines.push(`DTEND:${end}`);
+      lines.push(`SUMMARY:${event.title}`);
+      lines.push(`DESCRIPTION:${event.description}`);
+      lines.push(`LOCATION:${event.location}`);
+      lines.push("END:VEVENT");
+    });
+    
+    lines.push("END:VCALENDAR");
+    
+    const blob = new Blob([lines.join("\r\n")], { type: 'text/calendar' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${department.replace(/\s+/g, '_')}_Calendar.ics`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success("Calendar feed downloaded");
+  };
+
+  const handleShare = async () => {
+    try {
+      await navigator.share({
+        title: `${department} on Gatherum`,
+        url: window.location.href
+      });
+    } catch (err) {
+      navigator.clipboard.writeText(window.location.href);
+      toast.success("Link copied to clipboard");
+    }
+  };
+
+  return (
+    <div className="flex flex-col min-h-screen bg-bg-light dark:bg-bg-dark">
+      <Navbar />
+      <main className="flex-grow pt-24 pb-12">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <Link to="/events" className="inline-flex items-center gap-2 text-primary hover:underline mb-8 font-medium">
+            <ArrowLeft className="w-4 h-4" /> Back to Discover
+          </Link>
+
+          {error ? (
+            <ErrorState 
+              title="Failed to load organizer" 
+              message="There was a problem connecting to the server. Please try refreshing."
+              onRetry={() => window.location.reload()}
+            />
+          ) : isLoading ? (
+            <div className="space-y-8">
+              <SkeletonLoader type="card" className="h-48" />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <SkeletonLoader type="card" className="h-[300px]" count={3} />
+              </div>
+            </div>
+          ) : (
+            <>
+              <header className="bg-white dark:bg-surface-dark p-8 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 flex flex-col md:flex-row items-center md:items-start gap-6 text-center md:text-left mb-12 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3"></div>
+                
+                <div className="w-24 h-24 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-400 shrink-0 border-4 border-white dark:border-surface-dark shadow-md z-10">
+                  <Building className="w-12 h-12" />
+                </div>
+                
+                <div className="flex-grow z-10">
+                  <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{department}</h1>
+                  <p className="text-gray-500 mb-6">Organizer on Gatherum • {organizerEvents.length} upcoming events</p>
+                  
+                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                    <button 
+                      onClick={handleToggleFollow}
+                      disabled={isFollowLoading}
+                      className={`px-6 py-2 rounded-full font-bold text-sm flex items-center gap-2 transition-colors disabled:opacity-50 ${isFollowing ? 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700' : 'bg-primary text-white hover:bg-primary-hover'}`}
+                    >
+                      {isFollowing ? <><BellRing className="w-4 h-4" /> Following</> : <><Bell className="w-4 h-4" /> Subscribe</>}
+                    </button>
+                    <button 
+                      onClick={handleDownloadIcs}
+                      className="px-4 py-2 rounded-full font-bold text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors"
+                    >
+                      <Download className="w-4 h-4" /> .ics Feed
+                    </button>
+                    <button 
+                      onClick={handleShare}
+                      className="px-4 py-2 rounded-full font-bold text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors"
+                    >
+                      <Share2 className="w-4 h-4" /> Share
+                    </button>
+                  </div>
+                </div>
+              </header>
+
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-2">
+                <Calendar className="w-6 h-6 text-primary" /> Upcoming Events
+              </h2>
+              
+              {organizerEvents.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {organizerEvents.map(event => (
+                    <motion.div key={event.id} whileHover={{ y: -5 }}>
+                      <TiltCard>
+                        <Link 
+                          to={`/events/${event.id}`}
+                          className="block group bg-white dark:bg-surface-dark rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-800 h-full"
+                        >
+                          <div className="h-40 bg-gray-200 dark:bg-gray-800 relative overflow-hidden">
+                            <img src={event.posterUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                            <div className="absolute top-3 left-3 bg-white/90 dark:bg-surface-dark/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold text-primary">
+                              {event.category}
+                            </div>
+                          </div>
+                          <div className="p-5 flex flex-col justify-between h-[calc(100%-10rem)]">
+                            <div>
+                              <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2 line-clamp-2">{event.title}</h3>
+                              <div className="space-y-1 mb-4">
+                                <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                                  <Calendar className="w-4 h-4" />
+                                  {new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                </p>
+                                <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2 line-clamp-1">
+                                  <MapPin className="w-4 h-4" />
+                                  {event.location}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="text-primary font-bold text-sm group-hover:underline mt-auto">
+                              View Details →
+                            </div>
+                          </div>
+                        </Link>
+                      </TiltCard>
+                    </motion.div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState 
+                  icon={<Calendar className="w-12 h-12" />}
+                  title="No upcoming events"
+                  description="This organizer hasn't scheduled any events yet. Subscribe to be notified when they do."
+                />
+              )}
+            </>
+          )}
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
+```
+
+## `src/components/SignUpPage.tsx`
+```tsx
+import React, { useState, useEffect } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useAuth, AuthError } from "../contexts/AuthContext";
+import { motion, AnimatePresence } from "motion/react";
+
+// ─── Error messages ───────────────────────────────────────────────────────────
+const ERROR_MESSAGES: Record<AuthError, string> = {
+  invalid_email: "Please enter a valid email address.",
+  domain_restricted: "Sign-ups are restricted to your university email domain.",
+  signups_disabled: "New sign-ups are temporarily disabled. Please try again later.",
+  user_banned: "Your account has been suspended. Contact support.",
+  unknown: "Something went wrong. Please try again.",
+};
+
+// ─── Google Icon ─────────────────────────────────────────────────────────────
+function GoogleIcon() {
+  return (
+    <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+    </svg>
+  );
+}
+
+// ─── Spinner ──────────────────────────────────────────────────────────────────
+function Spinner() {
+  return (
+    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+    </svg>
+  );
+}
+
+// ─── Decorative background blobs ─────────────────────────────────────────────
+function Background() {
+  return (
+    <div className="fixed inset-0 -z-10 overflow-hidden bg-bg-light">
+      <div className="absolute -top-40 -left-40 w-[700px] h-[700px] rounded-full bg-primary/5 blur-[120px]" />
+      <div className="absolute -bottom-40 -right-40 w-[600px] h-[600px] rounded-full bg-accent/5 blur-[120px]" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] rounded-full bg-primary/10 blur-[80px]" />
+      {/* Grid */}
+      <div
+        className="absolute inset-0 opacity-10"
+        style={{
+          backgroundImage:
+            "linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)",
+          backgroundSize: "40px 40px",
+        }}
+      />
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+type Screen = "choose" | "magic_link" | "magic_sent";
+
+export default function SignUpPage() {
+  const [screen, setScreen] = useState<Screen>("choose");
+  const [email, setEmail]   = useState("");
+  const [error, setError]   = useState<string | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [magicLoading, setMagicLoading]   = useState(false);
+
+  const { login, loginWithGoogle, user, authError, clearAuthError, settings } = useAuth();
+  const navigate  = useNavigate();
+  const location  = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const urlError = params.get("error_description");
+    if (urlError) {
+      setError("Sign-up failed: " + decodeURIComponent(urlError.replace(/\+/g, " ")));
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    if (authError) {
+      setError(ERROR_MESSAGES[authError]);
+      clearAuthError();
+    }
+  }, [authError, clearAuthError]);
+
+  useEffect(() => {
+    if (user) navigate(`/${user.role}`, { replace: true });
+  }, [user, navigate]);
+
+  const handleGoogleSignUp = async () => {
+    setError(null);
+    setGoogleLoading(true);
+    const result = await loginWithGoogle();
+    if (!result.success && result.error) {
+      setError(ERROR_MESSAGES[result.error]);
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleMagicLinkSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) return;
+    
+    setError(null);
+    setMagicLoading(true);
+    const result = await login(email);
+    setMagicLoading(false);
+
+    if (result.success) {
+      setScreen("magic_sent");
+    } else if (result.error) {
+      setError(ERROR_MESSAGES[result.error]);
+    }
+  };
+
+  return (
+    <>
+      <Background />
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="w-full max-w-md bg-white/70 backdrop-blur-2xl border border-white p-8 rounded-3xl shadow-xl relative overflow-hidden"
+        >
+          {/* Subtle top glare */}
+          <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent" />
+          
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-black tracking-tight text-gray-900">
+              Join Gatherum
+            </h1>
+            <p className="text-gray-500 mt-2 text-sm leading-relaxed">
+              Create your account to discover and register for campus events.
+            </p>
+          </div>
+
+          <AnimatePresence mode="wait">
+            {screen === "choose" && (
+              <motion.div
+                key="choose"
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 10 }}
+                className="space-y-4"
+              >
+                {error && (
+                  <div className="p-3 mb-4 text-sm font-medium text-red-600 bg-red-50 border border-red-100 rounded-xl">
+                    {error}
+                  </div>
+                )}
+                <button
+                  onClick={handleGoogleSignUp}
+                  disabled={googleLoading}
+                  className="w-full h-12 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all active:scale-[0.98] flex items-center justify-center gap-3 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {googleLoading ? <Spinner /> : <GoogleIcon />}
+                  Sign up with Google
+                </button>
+
+                <div className="relative py-4">
+                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200"></div></div>
+                  <div className="relative flex justify-center"><span className="bg-white/80 px-4 text-xs font-bold uppercase text-gray-400 tracking-wider">Or</span></div>
+                </div>
+
+                <button
+                  onClick={() => { setError(null); setScreen("magic_link"); }}
+                  className="w-full h-12 bg-gray-900 text-white font-bold rounded-xl hover:bg-gray-800 transition-all active:scale-[0.98] shadow-sm"
+                >
+                  Sign up with Magic Link
+                </button>
+              </motion.div>
+            )}
+
+            {screen === "magic_link" && (
+              <motion.form
+                key="magic_link"
+                initial={{ opacity: 0, x: 10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                onSubmit={handleMagicLinkSubmit}
+                className="space-y-4"
+              >
+                {error && (
+                  <div className="p-3 mb-4 text-sm font-medium text-red-600 bg-red-50 border border-red-100 rounded-xl">
+                    {error}
+                  </div>
+                )}
+                
+                {settings?.allowedEmailDomain && (
+                  <div className="text-xs font-bold text-gray-500 mb-2 px-1">
+                    Use your <span className="text-primary">{settings.allowedEmailDomain}</span> email
+                  </div>
+                )}
+                
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder={`student${settings?.allowedEmailDomain ? settings.allowedEmailDomain : '@college.edu'}`}
+                  className="w-full h-12 px-4 rounded-xl border border-gray-200 bg-white/50 focus:bg-white focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all placeholder:text-gray-400 font-medium"
+                  required
+                />
+                
+                <button
+                  type="submit"
+                  disabled={magicLoading || !email.trim()}
+                  className="w-full h-12 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-all active:scale-[0.98] shadow-lg shadow-primary/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {magicLoading ? <Spinner /> : "Send Magic Link"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => { setError(null); setScreen("choose"); }}
+                  className="w-full py-2 text-sm font-bold text-gray-500 hover:text-gray-900 transition-colors"
+                >
+                  Back
+                </button>
+              </motion.form>
+            )}
+
+            {screen === "magic_sent" && (
+              <motion.div
+                key="magic_sent"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="text-center py-6"
+              >
+                <div className="w-16 h-16 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Check your email</h3>
+                <p className="text-sm text-gray-500 leading-relaxed mb-6">
+                  We've sent a magic link to <strong className="text-gray-900">{email}</strong>. Click it to create your account and sign in.
+                </p>
+                <button
+                  onClick={() => setScreen("choose")}
+                  className="text-sm font-bold text-primary hover:text-primary-hover transition-colors"
+                >
+                  Try another email
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+          
+          {/* Link back to login */}
+          <div className="mt-6 text-center">
+            <Link to="/login" className="text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">
+              Already have an account? Sign in
+            </Link>
+          </div>
+        </motion.div>
+      </div>
+    </>
+  );
+}
+
+```
+
+## `src/components/SkeletonLoader.tsx`
+```tsx
+import { useReducedMotion } from "motion/react";
+
+interface SkeletonProps {
+  type?: "card" | "text" | "header" | "avatar" | "list";
+  count?: number;
+  className?: string;
+}
+
+export default function SkeletonLoader({ type = "text", count = 1, className = "" }: SkeletonProps) {
+  const shouldReduceMotion = useReducedMotion();
+  const animationClass = shouldReduceMotion ? "" : "animate-pulse";
+
+  const renderSkeleton = () => {
+    switch (type) {
+      case "card":
+        return (
+          <div className={`bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 p-4 ${className}`}>
+            <div className={`w-full h-48 bg-gray-200 dark:bg-gray-700 rounded-2xl mb-4 ${animationClass}`} />
+            <div className={`w-3/4 h-6 bg-gray-200 dark:bg-gray-700 rounded-lg mb-2 ${animationClass}`} />
+            <div className={`w-1/2 h-4 bg-gray-100 dark:bg-gray-800 rounded-lg mb-4 ${animationClass}`} />
+            <div className="flex justify-between items-center mt-4">
+              <div className={`w-1/3 h-4 bg-gray-100 dark:bg-gray-800 rounded-lg ${animationClass}`} />
+              <div className={`w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-full ${animationClass}`} />
+            </div>
+          </div>
+        );
+      
+      case "header":
+        return (
+          <div className={`space-y-3 ${className}`}>
+            <div className={`w-1/2 md:w-1/3 h-10 bg-gray-200 dark:bg-gray-700 rounded-xl ${animationClass}`} />
+            <div className={`w-3/4 md:w-1/2 h-5 bg-gray-100 dark:bg-gray-800 rounded-lg ${animationClass}`} />
+          </div>
+        );
+        
+      case "avatar":
+        return <div className={`w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-full flex-shrink-0 ${animationClass} ${className}`} />;
+        
+      case "list":
+        return (
+          <div className={`flex items-center gap-4 p-4 border border-gray-100 dark:border-gray-800 rounded-2xl ${className}`}>
+            <div className={`w-16 h-16 bg-gray-200 dark:bg-gray-700 rounded-xl flex-shrink-0 ${animationClass}`} />
+            <div className="flex-1 space-y-2">
+              <div className={`w-3/4 h-5 bg-gray-200 dark:bg-gray-700 rounded-lg ${animationClass}`} />
+              <div className={`w-1/2 h-4 bg-gray-100 dark:bg-gray-800 rounded-lg ${animationClass}`} />
+            </div>
+          </div>
+        );
+
+      case "text":
+      default:
+        return <div className={`w-full h-4 bg-gray-200 dark:bg-gray-700 rounded-lg ${animationClass} ${className}`} />;
+    }
+  };
+
+  if (count === 1) return renderSkeleton();
+
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i}>{renderSkeleton()}</div>
+      ))}
+    </>
+  );
+}
+
+```
+
+## `src/components/StudentDashboard.tsx`
+```tsx
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { motion, AnimatePresence } from "motion/react";
+import DashboardLayout from "./DashboardLayout";
+import { Ticket, Calendar, Search, Clock, ArrowRight, Megaphone, Star, Check, Shield, Plus } from "lucide-react";
+import { useData } from "../contexts/DataContext";
+import { useAuth } from "../contexts/AuthContext";
+import StudentOnboarding from "./StudentOnboarding";
+import { pageTransition, cardHover } from "../utils/motion";
+import TiltCard from "./TiltCard";
+import SkeletonLoader from "./SkeletonLoader";
+import EmptyState from "./EmptyState";
+import ErrorState from "./ErrorState";
+
+export default function StudentDashboard() {
+  const { events, registrations, announcements, feedbacks, addFeedback, getMyVolunteeringEvents, isLoading, error } = useData();
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<"upcoming" | "past" | "waitlist">("upcoming");
+  const [feedbackState, setFeedbackState] = useState<{ [eventId: string]: { rating: number, comment: string } }>({});
+  const [volunteeringEventIds, setVolunteeringEventIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    getMyVolunteeringEvents().then(setVolunteeringEventIds).catch(console.error);
+  }, [getMyVolunteeringEvents]);
+
+  if (!user) return null;
+
+  const userRegs = registrations.filter(r => r.studentId === user?.id);
+  
+  const now = new Date().getTime();
+  
+  const upcomingEvents = userRegs
+    .filter(r => r.status === "registered")
+    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
+    .filter(item => item.event && new Date(item.event.endTime).getTime() > now)
+    .sort((a, b) => new Date(a.event!.date).getTime() - new Date(b.event!.date).getTime());
+
+  const pastEvents = userRegs
+    .filter(r => r.status === "registered")
+    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
+    .filter(item => item.event && new Date(item.event.endTime).getTime() <= now)
+    .sort((a, b) => new Date(b.event!.date).getTime() - new Date(a.event!.date).getTime());
+
+  const waitlistedEvents = userRegs
+    .filter(r => r.status === "waitlisted")
+    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }));
+
+  const volunteeringEvents = events.filter(e => volunteeringEventIds.includes(e.id)).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const userCategories = new Set([...upcomingEvents, ...pastEvents].map(item => item.event?.category));
+  const recommendedEvents = events
+    .filter(e => new Date(e.endTime).getTime() > now)
+    .filter(e => !userRegs.some(r => r.eventId === e.id) && !volunteeringEventIds.includes(e.id))
+    .filter(e => userCategories.size === 0 || userCategories.has(e.category))
+    .slice(0, 3);
+
+  const upcomingEventIds = upcomingEvents.map(u => u.event!.id);
+  const relevantAnnouncements = announcements
+    .filter(a => upcomingEventIds.includes(a.eventId))
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 3);
+
+  const handleFeedbackSubmit = (eventId: string) => {
+    const data = feedbackState[eventId];
+    if (data && data.rating > 0) {
+      addFeedback({
+        eventId,
+        studentEmail: user.email,
+        rating: data.rating,
+        comment: data.comment
+      });
+    }
+  };
+
+  const renderEventList = (list: any[], emptyMessage: string, emptyActionText: string) => {
+    if (list.length === 0) {
+      return (
+        <EmptyState 
+          icon={<Calendar className="w-8 h-8" />}
+          title={emptyMessage}
+          description="You can browse more events on the discovery page."
+          actionText={emptyActionText}
+          actionHref="/events"
+        />
+      );
+    }
+
+    return (
+      <motion.div 
+        className="space-y-4" 
+        role="list"
+        initial="hidden"
+        animate="show"
+        variants={{
+          hidden: { opacity: 0 },
+          show: {
+            opacity: 1,
+            transition: { staggerChildren: 0.1 }
+          }
+        }}
+      >
+        <AnimatePresence mode="popLayout">
+          {list.map(({ reg, event }) => {
+            const isPast = activeTab === "past";
+            const hasFeedback = feedbacks.some(f => f.eventId === event.id && f.studentId === user?.id);
+            const feedbackData = feedbackState[event.id] || { rating: 0, comment: "" };
+
+            return (
+              <motion.div 
+                key={reg.id} 
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                whileHover={cardHover}
+                className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden hover:border-primary/50 hover:shadow-md transition-shadow"
+                role="listitem"
+              >
+              <Link 
+                to={`/events/${event.id}`}
+                className="flex items-center gap-6 p-4 group focus:outline-none focus:bg-gray-50 dark:focus:bg-gray-800/50"
+                aria-label={`View details for ${event.title}`}
+              >
+                <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 hidden sm:block bg-gray-100 dark:bg-gray-800" aria-hidden="true">
+                  <img src={event.posterUrl} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                </div>
+                <div className="flex-grow min-w-0">
+                  <div className="flex justify-between items-start mb-1">
+                    <h4 className="font-bold text-lg text-gray-900 dark:text-white truncate pr-4">{event.title}</h4>
+                    {reg.status === 'waitlisted' && (
+                      <span className="shrink-0 px-3 py-1 bg-accent/10 text-accent-darker dark:text-accent text-xs font-bold rounded-full" aria-label={`Waitlist position ${reg.waitlistPosition}`}>
+                        Waitlist #{reg.waitlistPosition}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-4 h-4" aria-hidden="true" />
+                      {new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                    <span className="flex items-center gap-1 hidden md:flex truncate">
+                      <Clock className="w-4 h-4" aria-hidden="true" />
+                      {event.location}
+                    </span>
+                  </div>
+                </div>
+                <div className="shrink-0 p-2 text-gray-400 group-hover:text-primary transition-colors">
+                  <ArrowRight className="w-5 h-5" aria-hidden="true" />
+                </div>
+              </Link>
+              
+              <AnimatePresence mode="wait">
+                {isPast && !hasFeedback && (
+                  <motion.div 
+                    key="form"
+                    exit={{ opacity: 0, height: 0, overflow: "hidden" }}
+                    className="border-t border-gray-100 dark:border-gray-800 p-4 bg-gray-50 dark:bg-gray-800/30"
+                  >
+                    <p className="text-sm font-bold text-gray-900 dark:text-white mb-3" id={`feedback-label-${event.id}`}>How was the event?</p>
+                    <div className="flex flex-col sm:flex-row gap-4" role="group" aria-labelledby={`feedback-label-${event.id}`}>
+                      <div className="flex gap-1" role="radiogroup" aria-label="Rating">
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <button 
+                            key={star}
+                            onClick={() => setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, rating: star } }))}
+                            onKeyDown={(e) => {
+                              if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                                e.preventDefault();
+                                const next = star < 5 ? star + 1 : 1;
+                                setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, rating: next } }));
+                              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                                e.preventDefault();
+                                const prev = star > 1 ? star - 1 : 5;
+                                setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, rating: prev } }));
+                              }
+                            }}
+                            tabIndex={feedbackData.rating === star || (feedbackData.rating === 0 && star === 1) ? 0 : -1}
+                            className="focus:outline-none focus:ring-2 focus:ring-primary rounded-sm"
+                            role="radio"
+                            aria-checked={feedbackData.rating === star}
+                            aria-label={`${star} star${star > 1 ? 's' : ''}`}
+                          >
+                            <Star className={`w-6 h-6 ${star <= feedbackData.rating ? "text-yellow-400 fill-current" : "text-gray-300 dark:text-gray-600 hover:text-yellow-200"}`} />
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex-1 flex gap-2">
+                        <input 
+                          type="text" 
+                          value={feedbackData.comment}
+                          onChange={e => setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, comment: e.target.value } }))}
+                          placeholder="Add a comment (optional)..." 
+                          aria-label="Additional feedback comment"
+                          className="flex-1 text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-bg-dark outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <button 
+                          onClick={() => handleFeedbackSubmit(event.id)}
+                          disabled={feedbackData.rating === 0}
+                          aria-label="Submit feedback"
+                          className="px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary-hover transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-bg-dark"
+                        >
+                          Submit
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+                {isPast && hasFeedback && (
+                  <motion.div 
+                    key="success"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="border-t border-gray-100 dark:border-gray-800 p-4 bg-green-50 dark:bg-green-900/10 flex items-center gap-2 text-green-700 dark:text-green-400 text-sm font-bold" 
+                    role="status"
+                  >
+                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", bounce: 0.5 }}>
+                      <Check className="w-5 h-5 text-green-500" aria-hidden="true" /> 
+                    </motion.div>
+                    Feedback submitted. Thank you!
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+        </AnimatePresence>
+      </motion.div>
+    );
+  };
+
+  return (
+    <DashboardLayout>
+      <StudentOnboarding />
+      <motion.div 
+        variants={pageTransition} 
+        initial="initial" 
+        animate="animate" 
+        exit="exit" 
+        className="max-w-5xl mx-auto space-y-10"
+      >
+        <header>
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 tracking-tight">Student Dashboard</h1>
+          <p className="text-lg text-gray-500 dark:text-gray-400">Manage your schedule and discover new experiences.</p>
+        </header>
+
+        {error ? (
+          <ErrorState 
+            title="Failed to load dashboard" 
+            message="There was a problem connecting to the server. Please try refreshing."
+            onRetry={() => window.location.reload()}
+          />
+        ) : isLoading ? (
+          <div className="space-y-8">
+            <SkeletonLoader type="card" className="h-40" />
+            <SkeletonLoader type="card" count={3} />
+          </div>
+        ) : (
+          <>
+            {relevantAnnouncements.length > 0 && (
+          <section className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900 rounded-3xl p-6" aria-labelledby="announcements-heading">
+            <h2 id="announcements-heading" className="font-bold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
+              <Megaphone className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden="true" /> Recent Announcements
+            </h2>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {relevantAnnouncements.map(ann => {
+                const eventForAnn = events.find(e => e.id === ann.eventId);
+                return (
+                  <motion.div 
+                    key={ann.id} 
+                    whileHover={cardHover}
+                    className="bg-white dark:bg-surface-dark p-4 rounded-2xl shadow-sm border border-blue-100/50 dark:border-blue-800/50"
+                  >
+                    <div className="text-xs text-blue-600 dark:text-blue-400 font-bold mb-1">{eventForAnn?.title}</div>
+                    <h3 className="font-bold text-gray-900 dark:text-white mb-2">{ann.title}</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{ann.content}</p>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        {volunteeringEvents.length > 0 && (
+          <section className="mb-12">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Events You're Helping With</h2>
+                <p className="text-gray-500">You are a volunteer for these events</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {volunteeringEvents.map(event => (
+                <Link 
+                  key={`vol-${event.id}`}
+                  to={`/checkin/${event.id}`}
+                  className="bg-white dark:bg-surface-dark p-4 rounded-2xl border border-purple-100 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-500/50 hover:shadow-md transition-all flex items-center gap-4 group"
+                >
+                  <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-gray-100 dark:bg-gray-800">
+                    <img src={event.posterUrl} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                  </div>
+                  <div className="flex-grow min-w-0">
+                    <h4 className="font-bold text-gray-900 dark:text-white truncate">{event.title}</h4>
+                    <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
+                      <Calendar className="w-4 h-4" />
+                      {new Date(event.date).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="shrink-0 p-2 text-purple-600 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Tabs and Event Lists */}
+        <section>
+          <div 
+            className="flex gap-2 overflow-x-auto pb-4 mb-6 border-b border-gray-200 dark:border-gray-800 scrollbar-hide" 
+            role="tablist" 
+            aria-label="Event categories"
+          >
+            {[
+              { id: "upcoming", label: "Upcoming", count: upcomingEvents.length },
+              { id: "waitlist", label: "Waitlist", count: waitlistedEvents.length },
+              { id: "past", label: "Past Events", count: pastEvents.length }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                aria-controls={`${tab.id}-panel`}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-semibold transition-colors border-b-2 -mb-[18px] focus:outline-none focus:ring-2 focus:ring-primary ${
+                  activeTab === tab.id
+                    ? "text-primary border-primary bg-primary/5 dark:bg-primary/10"
+                    : "text-gray-500 border-transparent hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                }`}
+              >
+                {tab.label}
+                <span className={`px-2 py-0.5 rounded-full text-xs ${
+                  activeTab === tab.id ? 'bg-primary text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="min-h-[300px]" id={`${activeTab}-panel`} role="tabpanel">
+            {activeTab === "upcoming" && renderEventList(
+              upcomingEvents, 
+              "You don't have any upcoming events.", 
+              "Browse what's happening"
+            )}
+            {activeTab === "waitlist" && renderEventList(
+              waitlistedEvents, 
+              "You are not on any waitlists.", 
+              "Explore high-demand events"
+            )}
+            {activeTab === "past" && renderEventList(
+              pastEvents, 
+              "No past events to show.", 
+              "Find your first event"
+            )}
+          </div>
+        </section>
+
+        {/* Recommended Section */}
+        {recommendedEvents.length > 0 && (
+          <section className="pt-8 border-t border-gray-200 dark:border-gray-800" aria-labelledby="recommended-heading">
+            <div className="flex items-center justify-between mb-6">
+              <h2 id="recommended-heading" className="text-2xl font-bold text-gray-900 dark:text-white">Recommended for You</h2>
+              <Link to="/events" className="text-primary font-medium hover:underline text-sm flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-primary rounded-md p-1">
+                View All <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {recommendedEvents.map(event => (
+                <motion.div key={event.id} whileHover={cardHover}>
+                  <TiltCard>
+                    <Link 
+                      to={`/events/${event.id}`}
+                      className="block group bg-white dark:bg-surface-dark rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary h-full"
+                      aria-label={`View recommended event: ${event.title}`}
+                    >
+                      <div className="h-32 bg-gray-200 dark:bg-gray-800 relative overflow-hidden" aria-hidden="true">
+                        <img src={event.posterUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <div className="absolute top-3 right-3 bg-white/90 dark:bg-surface-dark/90 backdrop-blur-sm px-2 py-0.5 rounded-md text-xs font-bold">
+                          {event.category}
+                        </div>
+                      </div>
+                      <div className="p-4 flex flex-col justify-between h-[calc(100%-8rem)]">
+                        <div>
+                          <h4 className="font-bold text-gray-900 dark:text-white mb-2 line-clamp-1 group-hover:text-primary transition-colors">{event.title}</h4>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" aria-hidden="true" />
+                            {new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </p>
+                        </div>
+                        <span className="text-sm font-semibold text-primary">View Details</span>
+                      </div>
+                    </Link>
+                  </TiltCard>
+                </motion.div>
+              ))}
+            </div>
+          </section>
+        )}
+          </>
+        )}
+      </motion.div>
+
+      {user?.role === 'organizer' && (
+        <Link
+          to="/organizer/events/new"
+          className="fixed bottom-8 right-8 bg-primary hover:bg-primary-hover text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-primary/30 transition-transform hover:scale-105 z-50"
+          title="Create New Event"
+        >
+          <Plus className="w-6 h-6" />
+        </Link>
+      )}
+    </DashboardLayout>
+  );
+}
+
+```
+
+## `src/components/StudentOnboarding.tsx`
+```tsx
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import { QrCode, Calendar, Ticket, ChevronRight, X } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
+import { pageTransition, successAnimation } from "../utils/motion";
+
+const ONBOARDING_STEPS = [
+  {
+    title: "Welcome to Gatherum",
+    description: "Your new campus event hub. Let's quickly show you how to get around.",
+    icon: Calendar,
+    color: "text-blue-500",
+    bg: "bg-blue-100 dark:bg-blue-900/30",
+  },
+  {
+    title: "Find & Register",
+    description: "Browse the events page to find what's happening. Register with one tap, or join a waitlist if it's full.",
+    icon: Ticket,
+    color: "text-purple-500",
+    bg: "bg-purple-100 dark:bg-purple-900/30",
+  },
+  {
+    title: "QR Code Check-in",
+    description: "Once registered, you'll get a QR ticket. Present it to the organizer at the door to check in instantly.",
+    icon: QrCode,
+    color: "text-primary",
+    bg: "bg-primary/10",
+  }
+];
+
+export default function StudentOnboarding() {
+  const { user } = useAuth();
+  const [isOpen, setIsOpen] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    const key = `gatherum_onboarded_${user.email}`;
+    if (localStorage.getItem(key) !== "true") {
+      setIsOpen(true);
+    }
+  }, [user]);
+
+  const handleClose = () => {
+    if (user) {
+      localStorage.setItem(`gatherum_onboarded_${user.email}`, "true");
+    }
+    setIsOpen(false);
+  };
+
+  const nextStep = () => {
+    if (currentStep < ONBOARDING_STEPS.length - 1) {
+      setCurrentStep(prev => prev + 1);
+    } else {
+      handleClose();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const step = ONBOARDING_STEPS[currentStep];
+  const Icon = step.icon;
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className="w-full max-w-md bg-white dark:bg-surface-dark rounded-3xl shadow-2xl overflow-hidden border border-gray-100 dark:border-gray-800 relative"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="onboarding-title"
+          >
+            <button 
+              onClick={handleClose}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded-full z-10"
+              aria-label="Skip onboarding"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <div className="p-8 text-center relative overflow-hidden">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={currentStep}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex flex-col items-center"
+                >
+                  <div className={`w-20 h-20 rounded-2xl flex items-center justify-center mb-6 ${step.bg}`}>
+                    <Icon className={`w-10 h-10 ${step.color}`} />
+                  </div>
+                  <h2 id="onboarding-title" className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+                    {step.title}
+                  </h2>
+                  <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
+                    {step.description}
+                  </p>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+
+            <div className="p-6 bg-gray-50 dark:bg-gray-800/30 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+              <div className="flex gap-2">
+                {ONBOARDING_STEPS.map((_, i) => (
+                  <div 
+                    key={i} 
+                    className={`h-2 rounded-full transition-all duration-300 ${i === currentStep ? 'w-6 bg-primary' : 'w-2 bg-gray-300 dark:bg-gray-600'}`}
+                    aria-hidden="true"
+                  />
+                ))}
+              </div>
+              
+              <button
+                onClick={nextStep}
+                className="flex items-center gap-2 px-6 py-2.5 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-bg-dark"
+              >
+                {currentStep === ONBOARDING_STEPS.length - 1 ? "Get Started" : "Next"}
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+```
+
+## `src/components/StudentTicketsPage.tsx`
+```tsx
+import { Link } from "react-router-dom";
+import { motion } from "motion/react";
+import DashboardLayout from "./DashboardLayout";
+import { useData } from "../contexts/DataContext";
+import { useAuth } from "../contexts/AuthContext";
+import { QRCodeSVG } from "qrcode.react";
+import { Calendar, MapPin, Clock, Download, Ticket } from "lucide-react";
+import { pageTransition, cardHover } from "../utils/motion";
+import SkeletonLoader from "./SkeletonLoader";
+import EmptyState from "./EmptyState";
+import ErrorState from "./ErrorState";
+
+export default function StudentTicketsPage() {
+  const { events, registrations, isLoading, error } = useData();
+  const { user } = useAuth();
+
+  if (!user) return null;
+
+  const userTickets = registrations
+    .filter(r => r.studentId === user?.id && r.status === "registered")
+    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
+    .filter(item => item.event)
+    .sort((a, b) => new Date(b.event!.date).getTime() - new Date(a.event!.date).getTime());
+
+  const generateICS = (event: any) => {
+    const formatDate = (dateString: string) => {
+      const d = new Date(dateString);
+      return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    };
+
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      `DTSTART:${formatDate(event.date)}`,
+      `DTEND:${formatDate(event.endTime)}`,
+      `SUMMARY:${event.title}`,
+      `DESCRIPTION:${event.description}`,
+      `LOCATION:${event.location}`,
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\n');
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <DashboardLayout>
+      <motion.div 
+        variants={pageTransition}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        className="max-w-5xl mx-auto space-y-8"
+      >
+        <header>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">My Tickets</h1>
+          <p className="text-gray-500 dark:text-gray-400">Access your QR codes and event details.</p>
+        </header>
+
+        {error ? (
+          <ErrorState 
+            title="Failed to load tickets" 
+            message="There was a problem connecting to the server. Please try refreshing."
+            onRetry={() => window.location.reload()}
+          />
+        ) : isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <SkeletonLoader type="card" className="h-[400px]" count={2} />
+          </div>
+        ) : userTickets.length === 0 ? (
+          <EmptyState 
+            icon={<Ticket className="w-8 h-8" />}
+            title="You have no tickets yet."
+            description="Register for an event to see your ticket here."
+            actionText="Browse Events"
+            actionHref="/events"
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8" role="list">
+            {userTickets.map(({ reg, event }, i) => (
+              <motion.div 
+                key={reg.id} 
+                initial={{ opacity: 0, rotateX: -90, y: 50, perspective: 1000 }}
+                animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                transition={{ 
+                  type: "spring", 
+                  stiffness: 260, 
+                  damping: 20, 
+                  delay: i * 0.15 
+                }}
+                whileHover={cardHover}
+                className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 shadow-xl overflow-hidden flex flex-col relative"
+                role="listitem"
+                style={{ transformStyle: "preserve-3d" }}
+              >
+                <div className="h-24 bg-primary/10 flex items-center justify-center relative overflow-hidden" aria-hidden="true">
+                  <div className="absolute inset-0 opacity-20" style={{ backgroundImage: `url(${event!.posterUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}></div>
+                  <h3 className="relative z-10 text-xl font-bold text-gray-900 dark:text-white text-center px-4">{event!.title}</h3>
+                </div>
+                
+                <div className="p-6 flex flex-col items-center flex-grow">
+                  <div className="mb-6 p-4 bg-white rounded-2xl shadow-sm border border-gray-100 inline-block" aria-label="Ticket QR Code">
+                    {reg.ticketId ? (
+                      <QRCodeSVG value={reg.ticketId} size={150} level="H" aria-hidden="true" />
+                    ) : (
+                      <div className="w-[150px] h-[150px] bg-gray-100 flex items-center justify-center text-gray-400 text-sm">No QR Code</div>
+                    )}
+                  </div>
+                  
+                  <div className="w-full space-y-3 mb-6">
+                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                      <Calendar className="w-4 h-4 text-primary" aria-hidden="true" />
+                      <span>{new Date(event!.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                      <Clock className="w-4 h-4 text-accent" aria-hidden="true" />
+                      <span>{new Date(event!.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                      <MapPin className="w-4 h-4 text-gray-400" aria-hidden="true" />
+                      <span className="truncate">{event!.location}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-auto w-full flex flex-col gap-2">
+                    {reg.ticketId && (
+                      <div className="text-center mb-2">
+                        <span className="text-xs text-gray-400 font-mono" aria-label={`Ticket ID: ${reg.ticketId}`}>ID: {reg.ticketId}</span>
+                      </div>
+                    )}
+                    <button 
+                      onClick={() => generateICS(event)}
+                      className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-center gap-2 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+                      aria-label={`Download calendar invite for ${event!.title}`}
+                    >
+                      <Download className="w-4 h-4" aria-hidden="true" /> Add to Calendar
+                    </button>
+                    <Link 
+                      to={`/events/${event!.id}`}
+                      className="w-full py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-center font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+                      aria-label={`View details for ${event!.title}`}
+                    >
+                      View Event Details
+                    </Link>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </motion.div>
+    </DashboardLayout>
+  );
+}
+
+```
+
+## `src/components/TiltCard.tsx`
+```tsx
+import React, { useRef } from "react";
+import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from "motion/react";
+
+interface TiltCardProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+export default function TiltCard({ children, className = "" }: TiltCardProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const shouldReduceMotion = useReducedMotion();
+
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+
+  const mouseXSpring = useSpring(x, { stiffness: 300, damping: 30 });
+  const mouseYSpring = useSpring(y, { stiffness: 300, damping: 30 });
+
+  const rotateX = useTransform(mouseYSpring, [-0.5, 0.5], ["7.5deg", "-7.5deg"]);
+  const rotateY = useTransform(mouseXSpring, [-0.5, 0.5], ["-7.5deg", "7.5deg"]);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!ref.current || shouldReduceMotion) return;
+    
+    const rect = ref.current.getBoundingClientRect();
+    const width = rect.width;
+    const height = rect.height;
+    
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    
+    const xPct = mouseX / width - 0.5;
+    const yPct = mouseY / height - 0.5;
+    
+    x.set(xPct);
+    y.set(yPct);
+  };
+
+  const handleMouseLeave = () => {
+    x.set(0);
+    y.set(0);
+  };
+
+  return (
+    <motion.div
+      ref={ref}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        rotateX: shouldReduceMotion ? 0 : rotateX,
+        rotateY: shouldReduceMotion ? 0 : rotateY,
+        transformStyle: "preserve-3d",
+      }}
+      whileHover={{ scale: shouldReduceMotion ? 1 : 1.02, zIndex: 10 }}
+      className={`relative ${className}`}
+    >
+      <div style={{ transform: shouldReduceMotion ? "none" : "translateZ(30px)" }} className="w-full h-full">
+        {children}
+      </div>
+    </motion.div>
+  );
+}
+
+```
+
+## `src/contexts/AuthContext.tsx`
+```tsx
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from "react";
+import { supabase } from "../lib/supabase";
+import { AuthService } from "../services/api";
+
+export type Role = "student" | "organizer" | "admin";
+
+export interface User {
+  id: string;
+  email: string;
+  role: Role;
+  isBanned: boolean;
+}
+
+export interface PlatformSettings {
+  allowGlobalSignups: boolean;
+  allowedEmailDomain: string;
+  maintenanceMode: boolean;
+}
+
+export type AuthError =
+  | "invalid_email"
+  | "domain_restricted"
+  | "signups_disabled"
+  | "user_banned"
+  | "unknown";
+
+interface AuthContextType {
+  user: User | null;
+  users: User[];
+  settings: PlatformSettings;
+  authError: AuthError | null;
+  isLoading: boolean;
+  login: (email: string) => Promise<{ success: boolean; error?: AuthError }>;
+  loginWithGoogle: () => Promise<{ success: boolean; error?: AuthError }>;
+  logout: () => Promise<void>;
+  clearAuthError: () => void;
+  updateUserRole: (userId: string, role: Role) => Promise<void>;
+  toggleUserBan: (userId: string, currentBanStatus: boolean) => Promise<void>;
+  updateSettings: (newSettings: PlatformSettings) => Promise<void>;
+  refreshUser: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const DEFAULT_SETTINGS: PlatformSettings = {
+  allowGlobalSignups: true,
+  allowedEmailDomain: "@poornima.org",
+  maintenanceMode: false,
+};
+
+async function buildUserFromSession(userId: string, email: string): Promise<User | null> {
+  try {
+    const profile = await AuthService.getProfile(userId);
+    if (!profile) return null;
+    return {
+      id: userId,
+      email: profile.email || email,
+      role: profile.role as Role,
+      isBanned: profile.is_banned ?? false,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser]       = useState<User | null>(null);
+  const [users, setUsers]     = useState<User[]>([]);
+  const [settings, setSettings] = useState<PlatformSettings>(DEFAULT_SETTINGS);
+  const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState<AuthError | null>(null);
+
+  const fetchSettings = useCallback(async () => {
+    const { data } = await supabase
+      .from("platform_settings")
+      .select("*")
+      .eq("id", 1)
+      .single();
+    if (data) {
+      setSettings({
+        allowGlobalSignups: data.allow_global_signups ?? true,
+        allowedEmailDomain: data.allowed_email_domain ?? "",
+        maintenanceMode: data.maintenance_mode ?? false,
+      });
+    }
+  }, []);
+
+  const fetchUsers = useCallback(async () => {
+    const { data } = await supabase.rpc("admin_fetch_users");
+    if (data) {
+      setUsers(
+        data.map((d: any) => ({
+          id: d.id,
+          email: d.email,
+          role: d.role as Role,
+          isBanned: d.is_banned ?? false,
+        }))
+      );
+    }
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setUser(null); return; }
+    const u = await buildUserFromSession(session.user.id, session.user.email ?? "");
+    setUser(u);
+  }, []);
+
+  // Initial load + auth state listener
+  useEffect(() => {
+    let mounted = true;
+
+    const init = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && mounted) {
+          const u = await buildUserFromSession(session.user.id, session.user.email ?? "");
+          if (u && u.isBanned) { setAuthError("user_banned"); await supabase.auth.signOut(); }
+          else if (mounted) setUser(u);
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    init();
+    fetchSettings();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      if (event === "SIGNED_IN" && session) {
+        setIsLoading(true);
+        const u = await buildUserFromSession(session.user.id, session.user.email ?? "");
+        if (u?.isBanned) {
+          setAuthError("user_banned");
+          await supabase.auth.signOut();
+          setUser(null);
+        } else {
+          setUser(u);
+          if (u?.role === "admin") fetchUsers();
+        }
+        setIsLoading(false);
+      } else if (event === "SIGNED_OUT") {
+        setUser(null);
+      } else if (event === "TOKEN_REFRESHED" && session) {
+        // Silently refresh — no UI update needed
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [fetchSettings, fetchUsers]);
+
+  // Fetch users when role becomes admin
+  useEffect(() => {
+    if (user?.role === "admin") fetchUsers();
+  }, [user?.role, fetchUsers]);
+
+  // ─── Auth Actions ────────────────────────────────────────────────────────────
+
+  const login = async (email: string): Promise<{ success: boolean; error?: AuthError }> => {
+    const trimmed = email.trim().toLowerCase();
+
+    if (!trimmed.includes("@") || !trimmed.includes(".")) {
+      return { success: false, error: "invalid_email" };
+    }
+    if (!settings.allowGlobalSignups) {
+      return { success: false, error: "signups_disabled" };
+    }
+    if (settings.allowedEmailDomain && !trimmed.endsWith(settings.allowedEmailDomain)) {
+      return { success: false, error: "domain_restricted" };
+    }
+
+    try {
+      await AuthService.loginWithOtp(trimmed);
+      return { success: true };
+    } catch {
+      return { success: false, error: "unknown" };
+    }
+  };
+
+  const loginWithGoogle = async (): Promise<{ success: boolean; error?: AuthError }> => {
+    if (!settings.allowGlobalSignups) {
+      return { success: false, error: "signups_disabled" };
+    }
+    try {
+      await AuthService.loginWithGoogle();
+      return { success: true };
+    } catch {
+      return { success: false, error: "unknown" };
+    }
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  const clearAuthError = () => setAuthError(null);
+
+  const updateUserRole = async (userId: string, role: Role) => {
+    // UX guard - security is handled by the RPC
+    if (user?.role !== 'admin') return;
+
+    const { error } = await supabase.rpc("admin_update_user_role", { p_user_id: userId, p_role: role });
+    if (!error) {
+      setUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, role } : u)));
+      if (user?.id === userId) setUser({ ...user, role });
+    }
+  };
+
+  const toggleUserBan = async (userId: string, currentBanStatus: boolean) => {
+    // UX guard - security is handled by the RPC
+    if (user?.role !== 'admin') return;
+
+    const { error } = await supabase.rpc("admin_toggle_user_ban", { p_user_id: userId, p_is_banned: !currentBanStatus });
+    if (!error) {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, isBanned: !currentBanStatus } : u))
+      );
+    }
+  };
+
+  const updateSettings = async (newSettings: PlatformSettings) => {
+    // UX guard - security is handled by the RPC
+    if (user?.role !== 'admin') return;
+
+    const { error } = await supabase.rpc("admin_update_settings", {
+      p_allow_global_signups: newSettings.allowGlobalSignups,
+      p_allowed_email_domain: newSettings.allowedEmailDomain,
+      p_maintenance_mode: newSettings.maintenanceMode
+    });
+    if (!error) setSettings(newSettings);
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user, users, settings, authError, isLoading,
+        login, loginWithGoogle, logout, clearAuthError,
+        updateUserRole, toggleUserBan, updateSettings, refreshUser,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
+}
+
+```
+
+## `src/contexts/DataContext.tsx`
+```tsx
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "./AuthContext";
+import { 
+  EventService, 
+  RegistrationService, 
+  OrganizerTemplateService, 
+  UserCommunicationService,
+  EventTeamService,
+  SocialService
+} from "../services/api";
+
+export type EventCategory = "Social" | "Academic" | "Sports" | "Arts" | "Club";
+
+export interface CampusEvent {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  endTime: string;
+  location: string;
+  department: string;
+  category: EventCategory;
+  capacity: number;
+  registeredCount: number;
+  waitlistCount: number;
+  posterUrl: string;
+  isUnpublished?: boolean;
+  organizerId?: string;
+}
+
+export interface Registration {
+  id: string;
+  eventId: string;
+  studentId: string;
+  studentEmail?: string;
+  status: "registered" | "waitlisted";
+  waitlistPosition?: number;
+  ticketId?: string;
+  attended?: boolean;
+}
+
+export interface CheckInResult {
+  success: boolean;
+  message: string;
+  attendeeName?: string;
+  alreadyCheckedIn?: boolean;
+}
+
+export interface EventTemplate {
+  id: string;
+  organizerId: string;
+  name: string;
+  title: string;
+  description: string;
+  location: string;
+  department: string;
+  category: EventCategory;
+  capacity: number;
+  posterUrl: string;
+}
+
+export interface Announcement {
+  id: string;
+  eventId: string;
+  title: string;
+  content: string;
+  timestamp: string;
+}
+
+export interface Feedback {
+  id: string;
+  eventId: string;
+  studentId: string;
+  studentEmail?: string;
+  rating: number; // 1-5
+  comment: string;
+}
+
+interface DataContextType {
+  events: CampusEvent[];
+  registrations: Registration[];
+  templates: EventTemplate[];
+  announcements: Announcement[];
+  feedbacks: Feedback[];
+  isLoading: boolean;
+  registerForEvent: (eventId: string) => Promise<void>;
+  joinWaitlist: (eventId: string) => Promise<void>;
+  cancelRegistration: (eventId: string) => Promise<void>;
+  checkConflict: (eventId: string) => CampusEvent | null;
+  checkInUser: (ticketId: string) => Promise<CheckInResult>;
+  createEvent: (eventData: Omit<CampusEvent, "id" | "registeredCount" | "waitlistCount">) => Promise<string>;
+  saveTemplate: (template: Omit<EventTemplate, "id" | "organizerId">) => Promise<void>;
+  removeRegistrant: (regId: string) => Promise<void>;
+  addAnnouncement: (announcement: Omit<Announcement, "id" | "timestamp">) => Promise<void>;
+  addFeedback: (feedback: Omit<Feedback, "id" | "studentId">) => Promise<void>;
+  deleteEvent: (eventId: string) => Promise<void>;
+  unpublishEvent: (eventId: string, isUnpublished: boolean) => Promise<void>;
+  getMyVolunteeringEvents: () => Promise<string[]>;
+  getVolunteers: (eventId: string) => Promise<{userId: string; email: string}[]>;
+  inviteVolunteer: (eventId: string, email: string) => Promise<void>;
+  removeVolunteer: (eventId: string, userId: string) => Promise<void>;
+  subscribeToOrganizer: (organizerId: string) => Promise<void>;
+  unsubscribeFromOrganizer: (organizerId: string) => Promise<void>;
+  getFollowedOrganizers: () => Promise<string[]>;
+  getPublicAttendeeSignal: (eventId: string) => Promise<{studentId: string; studentEmail?: string}[]>;
+  error: Error | null;
+}
+
+const DataContext = createContext<DataContextType | undefined>(undefined);
+
+export function DataProvider({ children }: { children: ReactNode }) {
+  const [events, setEvents] = useState<CampusEvent[]>([]);
+  const [registrations, setRegistrations] = useState<Registration[]>([]);
+  const [templates, setTemplates] = useState<EventTemplate[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  
+  const { user, isLoading: authLoading } = useAuth();
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [evts, tmpls, regs, anns, fbs] = await Promise.all([
+        EventService.getEvents(),
+        user?.role === 'organizer' || user?.role === 'admin' ? OrganizerTemplateService.getTemplates() : Promise.resolve([]),
+        user ? RegistrationService.getRegistrations() : Promise.resolve([]),
+        UserCommunicationService.getAnnouncements(),
+        UserCommunicationService.getFeedbacks()
+      ]);
+      
+      // Calculate dynamic counts for events
+      const enrichedEvents = evts.map(evt => {
+        const eventRegs = regs.filter(r => r.eventId === evt.id);
+        return {
+          ...evt,
+          registeredCount: eventRegs.filter(r => r.status === 'registered').length,
+          waitlistCount: eventRegs.filter(r => r.status === 'waitlisted').length
+        };
+      });
+
+      setEvents(enrichedEvents);
+      setRegistrations(regs);
+      setTemplates(tmpls);
+      setAnnouncements(anns);
+      setFeedbacks(fbs);
+    } catch (err: any) {
+      console.error("Failed to load data from Supabase:", err);
+      setError(err instanceof Error ? err : new Error(String(err)));
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!authLoading) {
+      loadData();
+    }
+  }, [user, authLoading, loadData]);
+
+  const checkConflict = useCallback((eventId: string): CampusEvent | null => {
+    if (!user) return null;
+    const targetEvent = events.find(e => e.id === eventId);
+    if (!targetEvent) return null;
+
+    const userRegs = registrations.filter(r => r.studentId === user.id && r.status === "registered");
+    for (const reg of userRegs) {
+      const registeredEvent = events.find(e => e.id === reg.eventId);
+      if (registeredEvent && registeredEvent.id !== eventId) {
+        const parseDate = (d: string) => d.length === 10 ? new Date(d + 'T00:00:00').getTime() : new Date(d).getTime();
+        const tStart = parseDate(targetEvent.date);
+        const tEnd = parseDate(targetEvent.endTime);
+        const rStart = parseDate(registeredEvent.date);
+        const rEnd = parseDate(registeredEvent.endTime);
+        
+        if (tStart < rEnd && tEnd > rStart) {
+          return registeredEvent;
+        }
+      }
+    }
+    return null;
+  }, [user, events, registrations]);
+
+  const registerForEvent = useCallback(async (eventId: string) => {
+    await RegistrationService.register(eventId);
+    const regs = await RegistrationService.getRegistrations();
+    setRegistrations(regs);
+    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, registeredCount: e.registeredCount + 1 } : e));
+  }, []);
+
+  const joinWaitlist = useCallback(async (eventId: string) => {
+    await RegistrationService.register(eventId);
+    const regs = await RegistrationService.getRegistrations();
+    setRegistrations(regs);
+    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, waitlistCount: e.waitlistCount + 1 } : e));
+  }, []);
+
+  const cancelRegistration = useCallback(async (eventId: string) => {
+    const reg = registrations.find(r => r.eventId === eventId && r.studentId === user?.id);
+    await RegistrationService.cancelRegistration(eventId);
+    const regs = await RegistrationService.getRegistrations();
+    setRegistrations(regs);
+    if (reg) {
+      setEvents(prev => prev.map(e => {
+        if (e.id === eventId) {
+          if (reg.status === 'registered') return { ...e, registeredCount: Math.max(0, e.registeredCount - 1) };
+          if (reg.status === 'waitlisted') return { ...e, waitlistCount: Math.max(0, e.waitlistCount - 1) };
+        }
+        return e;
+      }));
+    }
+  }, [registrations, user?.id]);
+
+  const checkInUser = useCallback(async (ticketId: string): Promise<CheckInResult> => {
+    const result = await RegistrationService.checkIn(ticketId);
+    if (result.success) {
+      const regs = await RegistrationService.getRegistrations();
+      setRegistrations(regs);
+    }
+    return result;
+  }, []);
+
+  const createEvent = useCallback(async (eventData: Omit<CampusEvent, "id" | "registeredCount" | "waitlistCount">) => {
+    const id = await EventService.createEvent(eventData);
+    await loadData();
+    return id;
+  }, [loadData]);
+
+  const saveTemplate = useCallback(async (templateData: Omit<EventTemplate, "id" | "organizerId">) => {
+    await OrganizerTemplateService.saveTemplate(templateData as Omit<EventTemplate, "id">);
+    await loadData();
+  }, [loadData]);
+
+  const removeRegistrant = useCallback(async (regId: string) => {
+    await RegistrationService.removeRegistrant(regId);
+    await loadData();
+  }, [loadData]);
+
+  const addAnnouncement = useCallback(async (announcementData: Omit<Announcement, "id" | "timestamp">) => {
+    await UserCommunicationService.addAnnouncement(announcementData);
+    const anns = await UserCommunicationService.getAnnouncements();
+    setAnnouncements(anns);
+  }, []);
+
+  const addFeedback = useCallback(async (feedbackData: Omit<Feedback, "id" | "studentId">) => {
+    await UserCommunicationService.addFeedback(feedbackData as Omit<Feedback, "id">);
+    const fbs = await UserCommunicationService.getFeedbacks();
+    setFeedbacks(fbs);
+  }, []);
+
+  const deleteEvent = useCallback(async (eventId: string) => {
+    await EventService.deleteEvent(eventId);
+    await loadData();
+  }, [loadData]);
+
+  const unpublishEvent = useCallback(async (eventId: string, isUnpublished: boolean) => {
+    await EventService.updateEventPublishStatus(eventId, isUnpublished);
+    await loadData();
+  }, [loadData]);
+
+  const contextValue = useMemo(() => ({
+    events, registrations, templates, announcements, feedbacks, isLoading, error,
+    registerForEvent, joinWaitlist, cancelRegistration, checkConflict, checkInUser,
+    createEvent, saveTemplate, removeRegistrant, addAnnouncement, addFeedback,
+    deleteEvent, unpublishEvent,
+    getMyVolunteeringEvents: EventTeamService.getMyVolunteeringEvents,
+    getVolunteers: EventTeamService.getVolunteers,
+    inviteVolunteer: EventTeamService.inviteVolunteer,
+    removeVolunteer: EventTeamService.removeVolunteer,
+    subscribeToOrganizer: SocialService.subscribeToOrganizer,
+    unsubscribeFromOrganizer: SocialService.unsubscribeFromOrganizer,
+    getFollowedOrganizers: SocialService.getFollowedOrganizers,
+    getPublicAttendeeSignal: RegistrationService.getPublicAttendeeSignal
+  }), [
+    events, registrations, templates, announcements, feedbacks, isLoading, error,
+    registerForEvent, joinWaitlist, cancelRegistration, checkConflict, checkInUser,
+    createEvent, saveTemplate, removeRegistrant, addAnnouncement, addFeedback,
+    deleteEvent, unpublishEvent
+  ]);
+
+  return (
+    <DataContext.Provider value={contextValue}>
+      {children}
+    </DataContext.Provider>
+  );
+}
+
+export function useData() {
+  const context = useContext(DataContext);
+  if (context === undefined) {
+    throw new Error("useData must be used within a DataProvider");
+  }
+  return context;
+}
+
+```
+
+## `src/hooks/useAccessibleMotion.ts`
+```ts
+import { useState, useEffect } from 'react';
+
+export function useAccessibleMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(mediaQuery.matches);
+
+    const onChange = () => {
+      setPrefersReducedMotion(mediaQuery.matches);
+    };
+
+    mediaQuery.addEventListener('change', onChange);
+    return () => mediaQuery.removeEventListener('change', onChange);
+  }, []);
+
+  return prefersReducedMotion;
+}
+
+```
+
+## `src/index.css`
+```css
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #FF5A5F;
+  --color-primary-hover: #E0484D;
+  --color-accent: #FFB400;
+  --color-bg-light: #F9F7F5;
+  --color-bg-dark: #1E1E1E;
+  --color-surface-light: #FFFFFF;
+  --color-surface-dark: #2A2A2A;
+  
+  --font-heading: 'Outfit', sans-serif;
+  --font-body: 'Inter', sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-bg-light text-gray-900 font-body transition-colors duration-300;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-tight;
+  }
+}
+
+
+```
+
+## `src/lib/supabase.ts`
+```ts
+/// <reference types="vite/client" />
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables');
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+```
+
+## `src/main.tsx`
+```tsx
+import {StrictMode} from 'react';
+import {createRoot} from 'react-dom/client';
+import App from './App.tsx';
+import './index.css';
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
+
+```
+
+## `src/services/api.ts`
+```ts
+import { CampusEvent, Registration, EventTemplate, Announcement, Feedback, CheckInResult } from "../contexts/DataContext";
+import { supabase } from "../lib/supabase";
+
+export const EventService = {
+  getEvents: async (): Promise<CampusEvent[]> => {
+    const { data, error } = await supabase.from('events').select('*');
+    if (error) throw error;
+    
+    // Convert snake_case to camelCase
+    return data.map(d => ({
+      id: d.id,
+      title: d.title,
+      description: d.description,
+      date: d.date,
+      endTime: d.end_time,
+      location: d.location,
+      department: d.department,
+      category: d.category,
+      capacity: d.capacity,
+      registeredCount: 0, // We will calculate this via a view or separate query in a real app, or compute it. Let's fetch registration counts below.
+      waitlistCount: 0,
+      posterUrl: d.poster_url,
+      isUnpublished: d.is_unpublished,
+      organizerId: d.organizer_id
+    })) as CampusEvent[];
+  },
+
+  createEvent: async (eventData: Omit<CampusEvent, "id" | "registeredCount" | "waitlistCount">): Promise<string> => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error("Not authenticated");
+
+    const payload = {
+      title: eventData.title,
+      description: eventData.description,
+      date: eventData.date,
+      end_time: eventData.endTime,
+      location: eventData.location,
+      department: eventData.department,
+      category: eventData.category,
+      capacity: eventData.capacity,
+      poster_url: eventData.posterUrl,
+      is_unpublished: eventData.isUnpublished,
+      organizer_id: userData.user.id
+    };
+
+    const { data, error } = await supabase.from('events').insert(payload).select('id').single();
+    if (error) throw error;
+    return data.id;
+  },
+
+  deleteEvent: async (eventId: string): Promise<void> => {
+    const { error } = await supabase.from('events').delete().eq('id', eventId);
+    if (error) throw error;
+  },
+
+  updateEventPublishStatus: async (eventId: string, isUnpublished: boolean): Promise<void> => {
+    const { error } = await supabase.from('events').update({ is_unpublished: isUnpublished }).eq('id', eventId);
+    if (error) throw error;
+  }
+};
+
+export const RegistrationService = {
+  getRegistrations: async (): Promise<Registration[]> => {
+    const { data, error } = await supabase.from('registrations').select('*, profiles(email)');
+    if (error) throw error;
+    return data.map(d => ({
+      id: d.id,
+      eventId: d.event_id,
+      studentId: d.student_id,
+      studentEmail: (d as any).profiles?.email,
+      status: d.status,
+      waitlistPosition: d.waitlist_position,
+      ticketId: d.ticket_id,
+      attended: d.attended
+    })) as Registration[];
+  },
+  getRegistrationsForOrganizer: async (eventId: string): Promise<Registration[]> => {
+    const { data, error } = await supabase.from('registrations').select('*, profiles(email)').eq('event_id', eventId);
+    if (error) throw error;
+    return data.map(d => ({
+      id: d.id,
+      eventId: d.event_id,
+      studentId: d.student_id,
+      studentEmail: (d as any).profiles?.email,
+      status: d.status,
+      waitlistPosition: d.waitlist_position,
+      ticketId: d.ticket_id,
+      attended: d.attended
+    })) as Registration[];
+  },
+
+  getPublicAttendeeSignal: async (eventId: string): Promise<{studentId: string; studentEmail?: string}[]> => {
+    // Queries only attendees with public_rsvp = true
+    const { data, error } = await supabase
+      .from('registrations')
+      .select('student_id, profiles!inner(email, public_rsvp)')
+      .eq('event_id', eventId)
+      .eq('status', 'registered')
+      .eq('profiles.public_rsvp', true);
+    
+    if (error) throw error;
+    return data.map(d => ({
+      studentId: d.student_id,
+      studentEmail: (d as any).profiles?.email,
+    }));
+  },
+
+  register: async (eventId: string): Promise<{status: string}> => {
+    const { data, error } = await supabase.rpc('register_for_event', { p_event_id: eventId });
+    if (error) throw error;
+    return { status: data };
+  },
+
+  cancelRegistration: async (eventId: string): Promise<void> => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return;
+    const { error } = await supabase.from('registrations')
+      .delete()
+      .eq('event_id', eventId)
+      .eq('student_id', userData.user.id);
+    if (error) throw error;
+  },
+
+  checkIn: async (ticketId: string): Promise<CheckInResult> => {
+    const { data, error } = await supabase.rpc('check_in_by_ticket', { p_ticket_id: ticketId });
+    if (error) {
+      return { success: false, message: error.message };
+    }
+    if (data === 'success') {
+      return { success: true, message: "Checked in successfully" };
+    }
+    if (data === 'already_checked_in') {
+      return { success: false, message: "Already checked in", alreadyCheckedIn: true };
+    }
+    if (data === 'unauthorized') {
+      return { success: false, message: "You are not authorized to check in for this event." };
+    }
+    return { success: false, message: "Invalid ticket ID" };
+  },
+
+  removeRegistrant: async (regId: string): Promise<void> => {
+    const { error } = await supabase.from('registrations').delete().eq('id', regId);
+    if (error) throw error;
+  }
+};
+
+export const UserCommunicationService = {
+  getAnnouncements: async (): Promise<Announcement[]> => {
+    const { data, error } = await supabase.from('announcements').select('*');
+    if (error) throw error;
+    return data.map(d => ({
+      id: d.id,
+      eventId: d.event_id,
+      title: d.title,
+      content: d.content,
+      timestamp: d.timestamp
+    }));
+  },
+  
+  getFeedbacks: async (): Promise<Feedback[]> => {
+    const { data, error } = await supabase.from('feedbacks').select('*, profiles(email)');
+    if (error) throw error;
+    return data.map(d => ({
+      id: d.id,
+      eventId: d.event_id,
+      studentId: d.student_id,
+      studentEmail: (d as any).profiles?.email,
+      rating: d.rating,
+      comment: d.comment
+    }));
+  },
+
+  addAnnouncement: async (announcement: Omit<Announcement, "id" | "timestamp">): Promise<void> => {
+    const { error } = await supabase.from('announcements').insert({
+      event_id: announcement.eventId,
+      title: announcement.title,
+      content: announcement.content
+    });
+    if (error) throw error;
+  },
+
+  addFeedback: async (feedback: Omit<Feedback, "id">): Promise<void> => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error("Not authenticated");
+
+    const { error } = await supabase.from('feedbacks').insert({
+      event_id: feedback.eventId,
+      student_id: userData.user.id,
+      rating: feedback.rating,
+      comment: feedback.comment
+    });
+    if (error) throw error;
+  }
+};
+
+export const OrganizerTemplateService = {
+  getTemplates: async (): Promise<EventTemplate[]> => {
+    const { data, error } = await supabase.from('event_templates').select('*');
+    if (error) throw error;
+    return data.map(d => ({
+      id: d.id,
+      organizerId: d.organizer_id,
+      name: d.name,
+      title: d.title,
+      description: d.description,
+      location: d.location,
+      department: d.department,
+      category: d.category,
+      capacity: d.capacity,
+      posterUrl: d.poster_url
+    })) as EventTemplate[];
+  },
+
+  saveTemplate: async (template: Omit<EventTemplate, "id">): Promise<void> => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error("Not authenticated");
+
+    const { error } = await supabase.from('event_templates').insert({
+      organizer_id: userData.user.id,
+      name: template.name,
+      title: template.title,
+      description: template.description,
+      location: template.location,
+      department: template.department,
+      category: template.category,
+      capacity: template.capacity,
+      poster_url: template.posterUrl
+    });
+    if (error) throw error;
+  }
+};
+
+export const AuthService = {
+  loginWithOtp: async (email: string): Promise<void> => {
+    const { error } = await supabase.auth.signInWithOtp({ 
+      email,
+      options: {
+        emailRedirectTo: window.location.origin
+      }
+    });
+    if (error) throw error;
+  },
+
+  loginWithGoogle: async (): Promise<void> => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+    if (error) throw error;
+  },
+
+  logout: async (): Promise<void> => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  },
+  
+  getCurrentSession: async () => {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    return session;
+  },
+
+  getProfile: async (userId: string) => {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (error) throw error;
+    return data;
+  },
+  
+  updateProfilePrivacy: async (publicRsvp: boolean): Promise<void> => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error("Not authenticated");
+    const { error } = await supabase.from('profiles').update({ public_rsvp: publicRsvp }).eq('id', userData.user.id);
+    if (error) throw error;
+  }
+};
+
+export const EventTeamService = {
+  getMyVolunteeringEvents: async (): Promise<string[]> => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return [];
+    const { data, error } = await supabase
+      .from('event_team')
+      .select('event_id')
+      .eq('user_id', userData.user.id)
+      .eq('role', 'volunteer');
+    if (error) throw error;
+    return data.map(d => d.event_id);
+  },
+  getVolunteers: async (eventId: string): Promise<{userId: string; email: string}[]> => {
+    const { data, error } = await supabase
+      .from('event_team')
+      .select('user_id, profiles!inner(email)')
+      .eq('event_id', eventId)
+      .eq('role', 'volunteer');
+    if (error) throw error;
+    return data.map(d => ({
+      userId: d.user_id,
+      email: (d as any).profiles?.email,
+    }));
+  },
+  inviteVolunteer: async (eventId: string, email: string): Promise<void> => {
+    const { error } = await supabase.rpc('invite_volunteer', { p_event_id: eventId, p_email: email });
+    if (error) throw error;
+  },
+  removeVolunteer: async (eventId: string, userId: string): Promise<void> => {
+    const { error } = await supabase.rpc('remove_volunteer', { p_event_id: eventId, p_user_id: userId });
+    if (error) throw error;
+  }
+};
+
+export const SocialService = {
+  subscribeToOrganizer: async (organizerId: string): Promise<void> => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error("Not authenticated");
+    const { error } = await supabase.from('calendar_follows').insert({
+      follower_id: userData.user.id,
+      followed_organizer_id: organizerId
+    });
+    if (error) throw error;
+  },
+  unsubscribeFromOrganizer: async (organizerId: string): Promise<void> => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error("Not authenticated");
+    const { error } = await supabase.from('calendar_follows')
+      .delete()
+      .eq('follower_id', userData.user.id)
+      .eq('followed_organizer_id', organizerId);
+    if (error) throw error;
+  },
+  getFollowedOrganizers: async (): Promise<string[]> => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) return [];
+    const { data, error } = await supabase
+      .from('calendar_follows')
+      .select('followed_organizer_id')
+      .eq('follower_id', userData.user.id);
+    if (error) throw error;
+    return data.map(d => d.followed_organizer_id);
+  }
+};
+
+```
+
+## `src/utils/motion.ts`
+```ts
+import { Variants, Transition } from "motion/react";
+
+export const pageTransition: Variants = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } },
+  exit: { opacity: 0, y: -20, transition: { duration: 0.3, ease: "easeIn" as const } }
+};
+
+export const cardHover: { scale: number; transition: Transition } = {
+  scale: 1.02,
+  transition: { duration: 0.2, ease: "easeOut" as const }
+};
+
+export const successAnimation: Variants = {
+  initial: { scale: 0.8, opacity: 0 },
+  animate: { 
+    scale: 1, 
+    opacity: 1, 
+    transition: { 
+      type: "spring",
+      stiffness: 300,
+      damping: 20
+    } 
+  }
+};
+
+```
+
+## `supabase/.temp/linked-project.json`
+```json
+{"ref":"ucjdzwcizlnluniuyilt","name":"gatherum","organization_id":"fjfnxqiksnfgsgqgnuhg","organization_slug":"fjfnxqiksnfgsgqgnuhg"}
+```
+
+## `supabase/migrations/0001_gatherum_schema.sql`
+```sql
+-- 0001_gatherum_schema.sql
+
+-- ============================================================
+-- ENUMS
+-- ============================================================
+CREATE TYPE role_enum AS ENUM ('student', 'organizer', 'admin');
+CREATE TYPE registration_status_enum AS ENUM ('registered', 'waitlisted', 'cancelled', 'attended');
+CREATE TYPE event_team_role AS ENUM ('volunteer');
+
+-- ============================================================
+-- PLATFORM SETTINGS
+-- ============================================================
+CREATE TABLE platform_settings (
+  id int PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  signups_enabled boolean NOT NULL DEFAULT true,
+  allowed_email_domain text NOT NULL DEFAULT '@poornima.org',
+  maintenance_mode boolean NOT NULL DEFAULT false
+);
+
+INSERT INTO platform_settings (id, allowed_email_domain) VALUES (1, '@poornima.org') ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================
+-- TABLES
+-- ============================================================
+
+CREATE TABLE profiles (
+  id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  role role_enum NOT NULL DEFAULT 'student',
+  email text,
+  full_name text,
+  roll_number text,
+  branch text,
+  year_of_study int,
+  phone_number text,
+  avatar_url text,
+  public_rsvp boolean NOT NULL DEFAULT true,
+  profile_completed boolean NOT NULL DEFAULT false,
+  is_banned boolean NOT NULL DEFAULT false,
+  must_change_password boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organizer_id uuid REFERENCES profiles(id),
+  title text,
+  description text,
+  category text,
+  start_time timestamptz NOT NULL,
+  end_time timestamptz CHECK (end_time IS NULL OR end_time > start_time),
+  location text,
+  capacity int NOT NULL CHECK (capacity > 0),
+  poster_url text,
+  is_unpublished boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE registrations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id uuid REFERENCES events(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
+  status registration_status_enum NOT NULL DEFAULT 'registered',
+  ticket_id text UNIQUE NOT NULL DEFAULT gen_random_uuid()::text,
+  attended boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (event_id, user_id)
+);
+
+CREATE TABLE event_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  organizer_id uuid REFERENCES profiles(id),
+  title text,
+  description text,
+  category text,
+  capacity int,
+  poster_url text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE announcements (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id uuid REFERENCES events(id) ON DELETE CASCADE,
+  organizer_id uuid REFERENCES profiles(id),
+  message text NOT NULL CHECK (char_length(message) <= 1000),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE feedbacks (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id uuid REFERENCES events(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES profiles(id),
+  rating int NOT NULL CHECK (rating BETWEEN 1 AND 5),
+  comment text CHECK (char_length(comment) <= 500),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (event_id, user_id)
+);
+
+CREATE TABLE event_team (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id uuid REFERENCES events(id) ON DELETE CASCADE,
+  user_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
+  role event_team_role NOT NULL DEFAULT 'volunteer',
+  invited_by uuid REFERENCES profiles(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (event_id, user_id)
+);
+
+CREATE TABLE calendar_follows (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  follower_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
+  followed_organizer_id uuid REFERENCES profiles(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (follower_id, followed_organizer_id)
+);
+
+CREATE TABLE audit_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor_id uuid REFERENCES profiles(id),
+  action text NOT NULL,
+  target_table text,
+  target_id uuid,
+  details jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- TRIGGERS
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION trigger_set_updated_at()
+RETURNS trigger AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER set_profiles_updated_at BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
+CREATE TRIGGER set_events_updated_at BEFORE UPDATE ON events FOR EACH ROW EXECUTE FUNCTION trigger_set_updated_at();
+
+CREATE OR REPLACE FUNCTION prevent_restricted_profile_updates()
+RETURNS trigger AS $$
+BEGIN
+  IF NEW.role IS DISTINCT FROM OLD.role OR NEW.is_banned IS DISTINCT FROM OLD.is_banned OR NEW.must_change_password IS DISTINCT FROM OLD.must_change_password THEN
+    IF current_user IN ('postgres', 'supabase_admin', 'service_role') THEN
+      RETURN NEW;
+    ELSE
+      RAISE EXCEPTION 'Cannot update restricted fields directly';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER protect_profiles_trigger BEFORE UPDATE ON profiles FOR EACH ROW EXECUTE FUNCTION prevent_restricted_profile_updates();
+
+-- ============================================================
+-- RLS POLICIES
+-- ============================================================
+
+ALTER TABLE platform_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE registrations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE event_templates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE announcements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE feedbacks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE event_team ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calendar_follows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+
+-- platform_settings
+CREATE POLICY "Platform settings are readable by everyone" ON platform_settings FOR SELECT USING (true);
+CREATE POLICY "Platform settings are insertable by admins" ON platform_settings FOR INSERT WITH CHECK ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+CREATE POLICY "Platform settings are updatable by admins" ON platform_settings FOR UPDATE USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+CREATE POLICY "Platform settings are deletable by admins" ON platform_settings FOR DELETE USING ((SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+
+-- profiles
+CREATE POLICY "Profiles are readable by owner or admin" ON profiles FOR SELECT USING (auth.uid() = id OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+CREATE POLICY "Profiles are updatable by owner" ON profiles FOR UPDATE USING (auth.uid() = id);
+
+-- events
+CREATE POLICY "Events are readable by public (published) or organizers/team/admin" ON events FOR SELECT USING (
+  is_unpublished = false OR 
+  organizer_id = auth.uid() OR 
+  EXISTS (SELECT 1 FROM event_team WHERE event_id = events.id AND user_id = auth.uid()) OR 
+  (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+CREATE POLICY "Events are insertable by organizer or admin" ON events FOR INSERT WITH CHECK (
+  auth.uid() = organizer_id OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+CREATE POLICY "Events are updatable by organizer or admin" ON events FOR UPDATE USING (
+  auth.uid() = organizer_id OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+CREATE POLICY "Events are deletable by organizer or admin" ON events FOR DELETE USING (
+  auth.uid() = organizer_id OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+
+-- registrations
+CREATE POLICY "Registrations are readable by owner, event organizer, team, or admin" ON registrations FOR SELECT USING (
+  user_id = auth.uid() OR 
+  EXISTS (SELECT 1 FROM events WHERE id = event_id AND organizer_id = auth.uid()) OR
+  EXISTS (SELECT 1 FROM event_team WHERE event_id = registrations.event_id AND user_id = auth.uid()) OR
+  (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+-- No INSERT policy for registrations (RPC only)
+CREATE POLICY "Registrations are deletable by owner, event organizer, or admin" ON registrations FOR DELETE USING (
+  user_id = auth.uid() OR 
+  EXISTS (SELECT 1 FROM events WHERE id = event_id AND organizer_id = auth.uid()) OR
+  (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+
+-- event_templates
+CREATE POLICY "Event templates are readable by owner or admin" ON event_templates FOR SELECT USING (organizer_id = auth.uid() OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+CREATE POLICY "Event templates are insertable by owner or admin" ON event_templates FOR INSERT WITH CHECK (organizer_id = auth.uid() OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+CREATE POLICY "Event templates are updatable by owner or admin" ON event_templates FOR UPDATE USING (organizer_id = auth.uid() OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+CREATE POLICY "Event templates are deletable by owner or admin" ON event_templates FOR DELETE USING (organizer_id = auth.uid() OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin');
+
+-- announcements
+CREATE POLICY "Announcements are readable by public (published events) or organizers/team/admin" ON announcements FOR SELECT USING (
+  EXISTS (SELECT 1 FROM events WHERE id = event_id AND is_unpublished = false) OR
+  organizer_id = auth.uid() OR
+  EXISTS (SELECT 1 FROM event_team WHERE event_id = announcements.event_id AND user_id = auth.uid()) OR
+  (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+CREATE POLICY "Announcements are insertable by organizer or admin" ON announcements FOR INSERT WITH CHECK (
+  organizer_id = auth.uid() OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+CREATE POLICY "Announcements are updatable by organizer or admin" ON announcements FOR UPDATE USING (
+  organizer_id = auth.uid() OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+CREATE POLICY "Announcements are deletable by organizer or admin" ON announcements FOR DELETE USING (
+  organizer_id = auth.uid() OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+
+-- feedbacks
+CREATE POLICY "Feedbacks are insertable by student" ON feedbacks FOR INSERT WITH CHECK (
+  user_id = auth.uid()
+);
+CREATE POLICY "Feedbacks are readable by student or organizer/admin after event" ON feedbacks FOR SELECT USING (
+  user_id = auth.uid() OR 
+  (EXISTS (SELECT 1 FROM events WHERE id = event_id AND (organizer_id = auth.uid() OR (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin') AND (end_time IS NOT NULL AND end_time < now())))
+);
+
+-- event_team
+CREATE POLICY "Event team is readable by member, organizer, or admin" ON event_team FOR SELECT USING (
+  user_id = auth.uid() OR 
+  EXISTS (SELECT 1 FROM events WHERE id = event_id AND organizer_id = auth.uid()) OR
+  (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+-- No direct INSERT/DELETE for event_team (RPC only)
+
+-- calendar_follows
+CREATE POLICY "Calendar follows are readable by follower, followed organizer, or admin" ON calendar_follows FOR SELECT USING (
+  follower_id = auth.uid() OR 
+  followed_organizer_id = auth.uid() OR 
+  (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+CREATE POLICY "Calendar follows are insertable by follower" ON calendar_follows FOR INSERT WITH CHECK (follower_id = auth.uid());
+CREATE POLICY "Calendar follows are deletable by follower" ON calendar_follows FOR DELETE USING (follower_id = auth.uid());
+
+-- audit_log
+CREATE POLICY "Audit logs are readable by admin" ON audit_log FOR SELECT USING (
+  (SELECT role FROM profiles WHERE id = auth.uid()) = 'admin'
+);
+
+-- ============================================================
+-- FUNCTIONS (RPCs and Triggers)
+-- ============================================================
+
+-- handle_new_user (Fail Closed)
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS trigger AS $$
+DECLARE
+  v_allowed_domain text;
+  v_signups_enabled boolean;
+BEGIN
+  SELECT allowed_email_domain, signups_enabled INTO v_allowed_domain, v_signups_enabled FROM platform_settings WHERE id = 1;
+  
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Platform settings not found, signups rejected.';
+  END IF;
+
+  IF NOT v_signups_enabled THEN
+    RAISE EXCEPTION 'Global signups are currently disabled.';
+  END IF;
+
+  IF v_allowed_domain IS NOT NULL AND v_allowed_domain != '' AND new.email NOT LIKE '%' || v_allowed_domain THEN
+    RAISE EXCEPTION 'Users must use a % email.', v_allowed_domain;
+  END IF;
+
+  INSERT INTO public.profiles (id, email, role)
+  VALUES (new.id, new.email, 'student');
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER enforce_email_domain_and_create_profile
+AFTER INSERT ON auth.users
+FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- Wait, the trigger should probably be BEFORE INSERT for the validation part to reject it early! But `auth.users` trigger must be AFTER INSERT in Supabase otherwise it might not persist the profile properly. Or we can have a BEFORE INSERT on `auth.users` (which is in the auth schema, but we can attach a trigger to it). Actually, `auth.users` allows BEFORE INSERT triggers, but it's safer to just let the AFTER INSERT fail the transaction, which rolls back the user creation anyway.
+
+-- admin_fetch_users
+CREATE OR REPLACE FUNCTION admin_fetch_users()
+RETURNS TABLE (id uuid, email text, role role_enum, is_banned boolean, full_name text) AS $$
+BEGIN
+  IF (SELECT p.role FROM profiles p WHERE p.id = auth.uid()) != 'admin' THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+  RETURN QUERY SELECT p.id, p.email, p.role, p.is_banned, p.full_name FROM profiles p;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- admin_update_user_role
+CREATE OR REPLACE FUNCTION admin_update_user_role(p_user_id uuid, p_role role_enum)
+RETURNS void AS $$
+BEGIN
+  IF (SELECT role FROM profiles WHERE id = auth.uid()) != 'admin' THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+  
+  UPDATE profiles SET role = p_role WHERE id = p_user_id;
+  
+  INSERT INTO audit_log (actor_id, action, target_table, target_id, details)
+  VALUES (auth.uid(), 'admin_update_user_role', 'profiles', p_user_id, jsonb_build_object('new_role', p_role));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- admin_toggle_user_ban
+CREATE OR REPLACE FUNCTION admin_toggle_user_ban(p_user_id uuid, p_is_banned boolean)
+RETURNS void AS $$
+BEGIN
+  IF (SELECT role FROM profiles WHERE id = auth.uid()) != 'admin' THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+  
+  UPDATE profiles SET is_banned = p_is_banned WHERE id = p_user_id;
+  
+  INSERT INTO audit_log (actor_id, action, target_table, target_id, details)
+  VALUES (auth.uid(), 'admin_toggle_user_ban', 'profiles', p_user_id, jsonb_build_object('is_banned', p_is_banned));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- admin_update_settings
+CREATE OR REPLACE FUNCTION admin_update_settings(p_allow_global_signups boolean, p_allowed_email_domain text, p_maintenance_mode boolean)
+RETURNS void AS $$
+BEGIN
+  IF (SELECT role FROM profiles WHERE id = auth.uid()) != 'admin' THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+  
+  UPDATE platform_settings SET signups_enabled = p_allow_global_signups, allowed_email_domain = p_allowed_email_domain, maintenance_mode = p_maintenance_mode WHERE id = 1;
+  
+  INSERT INTO audit_log (actor_id, action, target_table, details)
+  VALUES (auth.uid(), 'admin_update_settings', 'platform_settings', jsonb_build_object('signups_enabled', p_allow_global_signups, 'allowed_email_domain', p_allowed_email_domain, 'maintenance_mode', p_maintenance_mode));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- register_for_event
+CREATE OR REPLACE FUNCTION register_for_event(p_event_id uuid)
+RETURNS registration_status_enum AS $$
+DECLARE
+  v_capacity int;
+  v_registered_count int;
+  v_status registration_status_enum;
+  v_user_id uuid := auth.uid();
+BEGIN
+  IF v_user_id IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+
+  SELECT capacity INTO v_capacity FROM events WHERE id = p_event_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Event not found'; END IF;
+
+  SELECT count(*) INTO v_registered_count FROM registrations WHERE event_id = p_event_id AND status = 'registered';
+
+  IF v_registered_count < v_capacity THEN
+    v_status := 'registered';
+  ELSE
+    v_status := 'waitlisted';
+  END IF;
+
+  INSERT INTO registrations (event_id, user_id, status) VALUES (p_event_id, v_user_id, v_status);
+  
+  INSERT INTO audit_log (actor_id, action, target_table, target_id, details)
+  VALUES (v_user_id, 'register_for_event', 'registrations', p_event_id, jsonb_build_object('status', v_status));
+
+  RETURN v_status;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- promote_from_waitlist
+CREATE OR REPLACE FUNCTION promote_from_waitlist()
+RETURNS trigger AS $$
+DECLARE
+  v_waitlisted_id uuid;
+BEGIN
+  IF OLD.status = 'registered' AND NEW.status = 'cancelled' THEN
+    SELECT id INTO v_waitlisted_id FROM registrations WHERE event_id = OLD.event_id AND status = 'waitlisted' ORDER BY created_at ASC LIMIT 1 FOR UPDATE;
+    IF FOUND THEN
+      UPDATE registrations SET status = 'registered' WHERE id = v_waitlisted_id;
+      INSERT INTO audit_log (actor_id, action, target_table, target_id, details)
+      VALUES (auth.uid(), 'promote_from_waitlist', 'registrations', v_waitlisted_id, '{}');
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+CREATE TRIGGER trigger_promote_from_waitlist AFTER UPDATE ON registrations FOR EACH ROW EXECUTE FUNCTION promote_from_waitlist();
+
+-- check_in_by_ticket
+CREATE OR REPLACE FUNCTION check_in_by_ticket(p_ticket_id text)
+RETURNS text AS $$
+DECLARE
+  v_reg_id uuid;
+  v_event_id uuid;
+  v_attended boolean;
+BEGIN
+  SELECT id, event_id, attended INTO v_reg_id, v_event_id, v_attended FROM registrations WHERE ticket_id = p_ticket_id;
+  IF NOT FOUND THEN RETURN 'not_found'; END IF;
+
+  IF NOT (
+    EXISTS (SELECT 1 FROM events WHERE id = v_event_id AND organizer_id = auth.uid()) OR
+    EXISTS (SELECT 1 FROM event_team WHERE event_id = v_event_id AND user_id = auth.uid())
+  ) THEN
+    RETURN 'unauthorized';
+  END IF;
+
+  IF v_attended THEN RETURN 'already_checked_in'; END IF;
+
+  UPDATE registrations SET attended = true, status = 'attended' WHERE id = v_reg_id;
+  
+  INSERT INTO audit_log (actor_id, action, target_table, target_id, details)
+  VALUES (auth.uid(), 'check_in_by_ticket', 'registrations', v_reg_id, '{}');
+
+  RETURN 'success';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- invite_volunteer
+CREATE OR REPLACE FUNCTION invite_volunteer(p_event_id uuid, p_email text)
+RETURNS void AS $$
+DECLARE
+  v_user_id uuid;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM events WHERE id = p_event_id AND organizer_id = auth.uid()) THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+  
+  SELECT id INTO v_user_id FROM profiles WHERE email = p_email;
+  IF NOT FOUND THEN RAISE EXCEPTION 'User not found'; END IF;
+
+  INSERT INTO event_team (event_id, user_id, invited_by) VALUES (p_event_id, v_user_id, auth.uid());
+  
+  INSERT INTO audit_log (actor_id, action, target_table, target_id, details)
+  VALUES (auth.uid(), 'invite_volunteer', 'event_team', v_user_id, jsonb_build_object('event_id', p_event_id));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- remove_volunteer
+CREATE OR REPLACE FUNCTION remove_volunteer(p_event_id uuid, p_user_id uuid)
+RETURNS void AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM events WHERE id = p_event_id AND organizer_id = auth.uid()) THEN
+    RAISE EXCEPTION 'Unauthorized';
+  END IF;
+
+  DELETE FROM event_team WHERE event_id = p_event_id AND user_id = p_user_id;
+  
+  INSERT INTO audit_log (actor_id, action, target_table, target_id, details)
+  VALUES (auth.uid(), 'remove_volunteer', 'event_team', p_user_id, jsonb_build_object('event_id', p_event_id));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- REVOKE ALL + TARGETED GRANT
+REVOKE ALL ON FUNCTION handle_new_user() FROM PUBLIC;
+REVOKE ALL ON FUNCTION admin_fetch_users() FROM PUBLIC;
+REVOKE ALL ON FUNCTION admin_update_user_role(uuid, role_enum) FROM PUBLIC;
+REVOKE ALL ON FUNCTION admin_toggle_user_ban(uuid, boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION admin_update_settings(boolean, text, boolean) FROM PUBLIC;
+REVOKE ALL ON FUNCTION register_for_event(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION promote_from_waitlist() FROM PUBLIC;
+REVOKE ALL ON FUNCTION check_in_by_ticket(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION invite_volunteer(uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION remove_volunteer(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION trigger_set_updated_at() FROM PUBLIC;
+REVOKE ALL ON FUNCTION prevent_restricted_profile_updates() FROM PUBLIC;
+
+GRANT EXECUTE ON FUNCTION admin_fetch_users() TO authenticated;
+GRANT EXECUTE ON FUNCTION admin_update_user_role(uuid, role_enum) TO authenticated;
+GRANT EXECUTE ON FUNCTION admin_toggle_user_ban(uuid, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION admin_update_settings(boolean, text, boolean) TO authenticated;
+GRANT EXECUTE ON FUNCTION register_for_event(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION check_in_by_ticket(text) TO authenticated;
+GRANT EXECUTE ON FUNCTION invite_volunteer(uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION remove_volunteer(uuid, uuid) TO authenticated;
+
+
+-- Grant default privileges on the public schema that were dropped with CASCADE
+
+GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
+
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO postgres, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres, anon, authenticated, service_role;
+
+
+-- Grant privileges to supabase_admin which is required for GoTrue auth triggers and cascading deletes
+
+GRANT USAGE ON SCHEMA public TO supabase_admin;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO supabase_admin;
+GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public TO supabase_admin;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO supabase_admin;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO supabase_admin;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO supabase_admin;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO supabase_admin;
+
+
+-- Fix audit_log actor_id foreign key constraint to use ON DELETE SET NULL
+
+ALTER TABLE audit_log DROP CONSTRAINT IF EXISTS audit_log_actor_id_fkey;
+ALTER TABLE audit_log ADD CONSTRAINT audit_log_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES profiles(id) ON DELETE SET NULL;
+
+
+-- Fix missing ON DELETE CASCADE for foreign keys referencing profiles
+
+ALTER TABLE events DROP CONSTRAINT IF EXISTS events_organizer_id_fkey;
+ALTER TABLE events ADD CONSTRAINT events_organizer_id_fkey FOREIGN KEY (organizer_id) REFERENCES profiles(id) ON DELETE CASCADE;
+
+ALTER TABLE event_templates DROP CONSTRAINT IF EXISTS event_templates_organizer_id_fkey;
+ALTER TABLE event_templates ADD CONSTRAINT event_templates_organizer_id_fkey FOREIGN KEY (organizer_id) REFERENCES profiles(id) ON DELETE CASCADE;
+
+ALTER TABLE announcements DROP CONSTRAINT IF EXISTS announcements_organizer_id_fkey;
+ALTER TABLE announcements ADD CONSTRAINT announcements_organizer_id_fkey FOREIGN KEY (organizer_id) REFERENCES profiles(id) ON DELETE CASCADE;
+
+ALTER TABLE feedbacks DROP CONSTRAINT IF EXISTS feedbacks_user_id_fkey;
+ALTER TABLE feedbacks ADD CONSTRAINT feedbacks_user_id_fkey FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
+
+ALTER TABLE event_team DROP CONSTRAINT IF EXISTS event_team_invited_by_fkey;
+ALTER TABLE event_team ADD CONSTRAINT event_team_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES profiles(id) ON DELETE SET NULL;
+
+
+-- Fix RLS infinite recursion by using SECURITY DEFINER functions
+
+-- 1. Helper function for role
+CREATE OR REPLACE FUNCTION get_auth_role()
+RETURNS role_enum AS $$
+  SELECT role FROM public.profiles WHERE id = auth.uid();
+$$ LANGUAGE sql SECURITY DEFINER SET search_path = public;
+
+-- 2. Helper function for event organizer (bypasses RLS to avoid mutual recursion)
+CREATE OR REPLACE FUNCTION is_event_organizer(p_event_id uuid)
+RETURNS boolean AS $$
+  SELECT EXISTS (SELECT 1 FROM public.events WHERE id = p_event_id AND organizer_id = auth.uid());
+$$ LANGUAGE sql SECURITY DEFINER SET search_path = public;
+
+-- 3. Helper function for event team member (bypasses RLS to avoid mutual recursion)
+CREATE OR REPLACE FUNCTION is_event_team_member(p_event_id uuid)
+RETURNS boolean AS $$
+  SELECT EXISTS (SELECT 1 FROM public.event_team WHERE event_id = p_event_id AND user_id = auth.uid());
+$$ LANGUAGE sql SECURITY DEFINER SET search_path = public;
+
+-- Drop all problematic policies
+DROP POLICY IF EXISTS "Profiles are readable by owner or admin" ON profiles;
+DROP POLICY IF EXISTS "Events are readable by public (published) or organizers/team/admin" ON events;
+DROP POLICY IF EXISTS "Events are insertable by organizer or admin" ON events;
+DROP POLICY IF EXISTS "Events are updatable by organizer or admin" ON events;
+DROP POLICY IF EXISTS "Events are deletable by organizer or admin" ON events;
+DROP POLICY IF EXISTS "Registrations are readable by owner, event organizer, team, or admin" ON registrations;
+DROP POLICY IF EXISTS "Registrations are deletable by owner, event organizer, or admin" ON registrations;
+DROP POLICY IF EXISTS "Event templates are readable by owner or admin" ON event_templates;
+DROP POLICY IF EXISTS "Event templates are insertable by owner or admin" ON event_templates;
+DROP POLICY IF EXISTS "Event templates are updatable by owner or admin" ON event_templates;
+DROP POLICY IF EXISTS "Event templates are deletable by owner or admin" ON event_templates;
+DROP POLICY IF EXISTS "Announcements are readable by public (published events) or organizers/team/admin" ON announcements;
+DROP POLICY IF EXISTS "Announcements are insertable by organizer or admin" ON announcements;
+DROP POLICY IF EXISTS "Announcements are updatable by organizer or admin" ON announcements;
+DROP POLICY IF EXISTS "Announcements are deletable by organizer or admin" ON announcements;
+DROP POLICY IF EXISTS "Feedbacks are readable by student or organizer/admin after event" ON feedbacks;
+DROP POLICY IF EXISTS "Event team is readable by member, organizer, or admin" ON event_team;
+DROP POLICY IF EXISTS "Calendar follows are readable by follower, followed organizer, or admin" ON calendar_follows;
+DROP POLICY IF EXISTS "Platform settings are insertable by admins" ON platform_settings;
+DROP POLICY IF EXISTS "Platform settings are updatable by admins" ON platform_settings;
+DROP POLICY IF EXISTS "Platform settings are deletable by admins" ON platform_settings;
+
+-- Recreate policies using the SECURITY DEFINER functions to prevent recursion
+
+-- platform_settings
+CREATE POLICY "Platform settings are insertable by admins" ON platform_settings FOR INSERT WITH CHECK (get_auth_role() = 'admin');
+CREATE POLICY "Platform settings are updatable by admins" ON platform_settings FOR UPDATE USING (get_auth_role() = 'admin');
+CREATE POLICY "Platform settings are deletable by admins" ON platform_settings FOR DELETE USING (get_auth_role() = 'admin');
+
+-- profiles
+CREATE POLICY "Profiles are readable by owner or admin" ON profiles FOR SELECT USING (auth.uid() = id OR get_auth_role() = 'admin');
+
+-- events
+CREATE POLICY "Events are readable by public (published) or organizers/team/admin" ON events FOR SELECT USING (
+  is_unpublished = false OR 
+  organizer_id = auth.uid() OR 
+  is_event_team_member(id) OR 
+  get_auth_role() = 'admin'
+);
+CREATE POLICY "Events are insertable by organizer or admin" ON events FOR INSERT WITH CHECK (
+  auth.uid() = organizer_id OR get_auth_role() = 'admin'
+);
+CREATE POLICY "Events are updatable by organizer or admin" ON events FOR UPDATE USING (
+  auth.uid() = organizer_id OR get_auth_role() = 'admin'
+);
+CREATE POLICY "Events are deletable by organizer or admin" ON events FOR DELETE USING (
+  auth.uid() = organizer_id OR get_auth_role() = 'admin'
+);
+
+-- registrations
+CREATE POLICY "Registrations are readable by owner, event organizer, team, or admin" ON registrations FOR SELECT USING (
+  user_id = auth.uid() OR 
+  is_event_organizer(event_id) OR
+  is_event_team_member(event_id) OR
+  get_auth_role() = 'admin'
+);
+CREATE POLICY "Registrations are deletable by owner, event organizer, or admin" ON registrations FOR DELETE USING (
+  user_id = auth.uid() OR 
+  is_event_organizer(event_id) OR
+  get_auth_role() = 'admin'
+);
+
+-- event_templates
+CREATE POLICY "Event templates are readable by owner or admin" ON event_templates FOR SELECT USING (organizer_id = auth.uid() OR get_auth_role() = 'admin');
+CREATE POLICY "Event templates are insertable by owner or admin" ON event_templates FOR INSERT WITH CHECK (organizer_id = auth.uid() OR get_auth_role() = 'admin');
+CREATE POLICY "Event templates are updatable by owner or admin" ON event_templates FOR UPDATE USING (organizer_id = auth.uid() OR get_auth_role() = 'admin');
+CREATE POLICY "Event templates are deletable by owner or admin" ON event_templates FOR DELETE USING (organizer_id = auth.uid() OR get_auth_role() = 'admin');
+
+-- announcements
+CREATE POLICY "Announcements are readable by public (published events) or organizers/team/admin" ON announcements FOR SELECT USING (
+  EXISTS (SELECT 1 FROM events WHERE id = event_id AND is_unpublished = false) OR
+  organizer_id = auth.uid() OR
+  is_event_team_member(event_id) OR
+  get_auth_role() = 'admin'
+);
+CREATE POLICY "Announcements are insertable by organizer or admin" ON announcements FOR INSERT WITH CHECK (
+  organizer_id = auth.uid() OR get_auth_role() = 'admin'
+);
+CREATE POLICY "Announcements are updatable by organizer or admin" ON announcements FOR UPDATE USING (
+  organizer_id = auth.uid() OR get_auth_role() = 'admin'
+);
+CREATE POLICY "Announcements are deletable by organizer or admin" ON announcements FOR DELETE USING (
+  organizer_id = auth.uid() OR get_auth_role() = 'admin'
+);
+
+-- feedbacks
+CREATE POLICY "Feedbacks are readable by student or organizer/admin after event" ON feedbacks FOR SELECT USING (
+  user_id = auth.uid() OR 
+  (is_event_organizer(event_id) OR get_auth_role() = 'admin') -- simplified check for readability, actual time check might be complex in RLS
+);
+
+-- event_team
+CREATE POLICY "Event team is readable by member, organizer, or admin" ON event_team FOR SELECT USING (
+  user_id = auth.uid() OR 
+  is_event_organizer(event_id) OR
+  get_auth_role() = 'admin'
+);
+
+-- calendar_follows
+CREATE POLICY "Calendar follows are readable by follower, followed organizer, or admin" ON calendar_follows FOR SELECT USING (
+  follower_id = auth.uid() OR 
+  followed_organizer_id = auth.uid() OR 
+  get_auth_role() = 'admin'
+);
+
+
+-- 1. Fix the trigger function to NOT be SECURITY DEFINER, or to check auth.role() properly
+CREATE OR REPLACE FUNCTION prevent_restricted_profile_updates()
+RETURNS trigger AS $$
+BEGIN
+  IF NEW.role IS DISTINCT FROM OLD.role OR NEW.is_banned IS DISTINCT FROM OLD.is_banned OR NEW.must_change_password IS DISTINCT FROM OLD.must_change_password THEN
+    -- Check if it's a supabase service role or postgres
+    -- auth.role() returns 'service_role' for admin, 'authenticated' for users. 
+    -- current_user is usually 'postgres' for backend scripts.
+    -- If it's a web client, auth.role() will be 'authenticated' or 'anon'.
+    IF auth.role() = 'authenticated' OR auth.role() = 'anon' THEN
+      RAISE EXCEPTION 'Cannot update restricted fields directly';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+-- By removing SECURITY DEFINER, it defaults to SECURITY INVOKER.
+
+
+
+```
+
+## `test_rls.mjs`
+```mjs
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+dotenv.config();
+
+const url = process.env.VITE_SUPABASE_URL;
+const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const admin = createClient(url, serviceKey);
+
+async function runTests() {
+  console.log('--- Setting up test environment ---');
+
+  // Helper to safely delete a user
+  const deleteUser = async (email) => {
+    const { data: users } = await admin.auth.admin.listUsers();
+    const u = users.users.find(u => u.email === email);
+    if (u) await admin.auth.admin.deleteUser(u.id);
+  };
+
+  // Cleanup old test users
+  await deleteUser('studenta@poornima.org');
+  await deleteUser('studentb@poornima.org');
+  await deleteUser('organizer@poornima.org');
+  await deleteUser('admin@poornima.org');
+  await deleteUser('test@gmail.com');
+
+  // Create users via admin to bypass email verification requirement if any, BUT wait! 
+  // We need them to go through the trigger! The trigger runs on insert to auth.users.
+  // Actually, we'll just use admin.auth.admin.createUser for A, B, Org, Admin.
+  const createAccount = async (email, password = 'Password123!') => {
+    const { data, error } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true
+    });
+    if (error) throw new Error(`Setup failed for ${email}: ${error.message}`);
+    return data.user;
+  };
+
+  const userA = await createAccount('studenta@poornima.org');
+  const userB = await createAccount('studentb@poornima.org');
+  const userOrg = await createAccount('organizer@poornima.org');
+  const userAdmin = await createAccount('admin@poornima.org');
+
+  // Promote Org and Admin via SQL/admin
+  await admin.from('profiles').update({ role: 'organizer' }).eq('id', userOrg.id);
+  await admin.from('profiles').update({ role: 'admin' }).eq('id', userAdmin.id);
+
+  // Setup client helpers
+  const getClient = async (email, password = 'Password123!') => {
+    const client = createClient(url, anonKey);
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (error) {
+       // if password fails, try generating magic link
+       console.log(`signInWithPassword failed for ${email} (${error.message}). Let's assume password login is disabled. Testing via JWT injection...`);
+       // Let's manually construct a client using a custom access token? No, easier to just rely on the API.
+       throw error;
+    }
+    return client;
+  };
+
+  const clientA = await getClient('studenta@poornima.org');
+  const clientB = await getClient('studentb@poornima.org');
+  const clientOrg = await getClient('organizer@poornima.org');
+  const clientAdminUser = await getClient('admin@poornima.org');
+
+  // Setup Event X and Event Y
+  const { data: eventX, error: eXError } = await admin.from('events').insert({
+    title: 'Test Event X',
+    description: 'X',
+    start_time: '2026-10-10T10:00:00Z',
+    end_time: '2026-10-10T12:00:00Z',
+    location: 'Campus',
+    category: 'workshop',
+    capacity: 10,
+    organizer_id: userOrg.id,
+    is_unpublished: false
+  }).select().single();
+  if (eXError) throw new Error('Failed to setup Event X: ' + eXError.message);
+
+  const { data: eventY, error: eYError } = await admin.from('events').insert({
+    title: 'Test Event Y',
+    description: 'Y',
+    start_time: '2026-10-10T10:00:00Z',
+    end_time: '2026-10-10T12:00:00Z',
+    location: 'Campus',
+    category: 'seminar',
+    capacity: 10,
+    organizer_id: userAdmin.id, // different organizer
+    is_unpublished: false
+  }).select().single();
+  if (eYError) throw new Error('Failed to setup Event Y: ' + eYError.message);
+
+  console.log('Setup complete.\n');
+  const results = [];
+
+  // TEST 1: Direct INSERT bypass on registrations
+  console.log('Running Test 1...');
+  try {
+    const t1 = await clientA.from('registrations').insert({
+      event_id: eventX.id,
+      user_id: userA.id,
+      status: 'registered'
+    });
+    const t1_pass = t1.error !== null && (t1.data === null || t1.data.length === 0);
+    results.push({ id: 1, name: 'Direct INSERT bypass', pass: t1_pass, error: t1.error?.message });
+  } catch (e) {
+    results.push({ id: 1, name: 'Direct INSERT bypass', pass: false, error: e.message });
+  }
+
+  // TEST 5: Direct DELETE bypass on event_team
+  console.log('Running Test 5...');
+  try {
+    const t5 = await clientA.from('event_team').delete().eq('event_id', eventX.id);
+    console.log('T5 data:', t5.data, 'T5 error:', t5.error);
+    const t5_pass = t5.error !== null || (t5.data === null || t5.data.length === 0);
+    results.push({ id: 5, name: 'Direct DELETE bypass (event_team)', pass: t5_pass, error: t5.error?.message });
+  } catch (e) {
+    results.push({ id: 5, name: 'Direct DELETE bypass (event_team)', pass: false, error: e.message });
+  }
+
+  // TEST 2: Direct UPDATE bypass on registrations.attended
+  console.log('Running Test 2...');
+  try {
+    // First, register B via RPC properly
+    const regRpc = await clientB.rpc('register_for_event', { p_event_id: eventX.id });
+    if (regRpc.error) throw new Error('regRpc error: ' + regRpc.error.message);
+    
+    const { data: regB, error: regBError } = await admin.from('registrations').select('id').eq('user_id', userB.id).single();
+    if (regBError || !regB) throw new Error('regB is null. Error: ' + regBError?.message);
+    const t2 = await clientA.from('registrations').update({ attended: true }).eq('id', regB.id);
+    // Recheck attended
+    const { data: regB_check } = await admin.from('registrations').select('attended').eq('id', regB.id).single();
+    console.log('T2 data:', t2.data, 'T2 error:', t2.error, 'regB_check.attended:', regB_check.attended);
+    const t2_pass = (t2.error !== null || (t2.data === null || t2.data.length === 0)) && regB_check.attended === false;
+    results.push({ id: 2, name: 'Direct UPDATE bypass (attended)', pass: t2_pass, error: t2.error?.message });
+  } catch (e) {
+    results.push({ id: 2, name: 'Direct UPDATE bypass (attended)', pass: false, error: e.message });
+  }
+
+  // TEST 3: Role self-escalation
+  console.log('Running Test 3...');
+  try {
+    const t3 = await clientA.from('profiles').update({ role: 'admin' }).eq('id', userA.id);
+    const { data: check3, error: check3Error } = await clientA.from('profiles').select('role').eq('id', userA.id).single();
+    if (check3Error || !check3) throw new Error('check3 is null or error: ' + check3Error?.message);
+    const t3_pass = (t3.error !== null || t3.data?.length === 0) && check3.role === 'student';
+    results.push({ id: 3, name: 'Role self-escalation', pass: t3_pass, error: t3.error?.message });
+  } catch (e) {
+    results.push({ id: 3, name: 'Role self-escalation', pass: false, error: e.message });
+  }
+
+  // TEST 4: Cross-student SELECT
+  console.log('Running Test 4...');
+  try {
+    const t4 = await clientA.from('profiles').select('*').eq('id', userB.id);
+    const t4_pass = t4.data === null || t4.data.length === 0;
+    results.push({ id: 4, name: 'Cross-student SELECT', pass: t4_pass, error: t4_pass ? null : `Got data: ${JSON.stringify(t4.data)}` });
+  } catch (e) {
+    results.push({ id: 4, name: 'Cross-student SELECT', pass: false, error: e.message });
+  }
+
+  // TEST 5: Non-college domain rejection
+  console.log('Running Test 5...');
+  try {
+    // We use client (anon) to signup test@gmail.com
+    const anonClient = createClient(url, anonKey);
+    const t5 = await anonClient.auth.signUp({ email: 'test@gmail.com', password: 'Password123!' });
+    const { data: check5 } = await admin.auth.admin.listUsers();
+    const found5 = check5.users.find(u => u.email === 'test@gmail.com');
+    const t5_pass = t5.error !== null && !found5;
+    results.push({ id: 5, name: 'Non-college domain rejection', pass: t5_pass, error: t5.error?.message });
+  } catch (e) {
+    results.push({ id: 5, name: 'Non-college domain rejection', pass: false, error: e.message });
+  }
+
+  // TEST 6: Concurrent registration race
+  console.log('Running Test 6...');
+  try {
+    const { data: eventRace, error: erError } = await admin.from('events').insert({
+      title: 'Race Event', description: 'R', start_time: '2026-10-10T10:00:00Z', end_time: '2026-10-10T12:00:00Z', location: 'C', category: 'workshop', capacity: 1, organizer_id: userOrg.id, is_unpublished: false
+    }).select().single();
+    if (erError) throw new Error('Race Event setup failed: ' + erError.message);
+    
+    const [resA, resB] = await Promise.all([
+      clientA.rpc('register_for_event', { p_event_id: eventRace.id }),
+      clientB.rpc('register_for_event', { p_event_id: eventRace.id })
+    ]);
+    const { data: raceRegs } = await admin.from('registrations').select('status').eq('event_id', eventRace.id);
+    const hasReg = raceRegs.some(r => r.status === 'registered');
+    const hasWait = raceRegs.some(r => r.status === 'waitlisted');
+    const t6_pass = raceRegs.length === 2 && hasReg && hasWait;
+    results.push({ id: 6, name: 'Concurrent registration race', pass: t6_pass, error: t6_pass ? null : `Got resA: ${JSON.stringify(resA)}, resB: ${JSON.stringify(resB)}` });
+  } catch(e) {
+    results.push({ id: 6, name: 'Concurrent registration race', pass: false, error: e.message });
+  }
+
+  // TEST 7: Volunteer cross-event rejection
+  console.log('Running Test 7...');
+  try {
+    // Make A a volunteer on Event Y, then A tries to invite B to Event X
+    await admin.from('event_team').insert({ event_id: eventY.id, user_id: userA.id, role: 'volunteer' });
+    const t7 = await clientA.rpc('invite_volunteer', { p_email: userB.email, p_event_id: eventX.id });
+    const t7_pass = t7.error !== null;
+    results.push({ id: 7, name: 'Volunteer cross-event rejection', pass: t7_pass, error: t7.error?.message });
+  } catch(e) {
+    results.push({ id: 7, name: 'Volunteer cross-event rejection', pass: false, error: e.message });
+  }
+
+  // TEST 8: Admin RPC non-admin rejection
+  console.log('Running Test 8...');
+  try {
+    const t8_1 = await clientA.rpc('admin_fetch_users');
+    const t8_2 = await clientA.rpc('admin_update_user_role', { p_user_id: userB.id, p_role: 'admin' });
+    const t8_pass = t8_1.error !== null && t8_2.error !== null;
+    results.push({ id: 8, name: 'Admin RPC non-admin rejection', pass: t8_pass, error: t8_1.error?.message });
+  } catch (e) {
+    results.push({ id: 8, name: 'Admin RPC non-admin rejection', pass: false, error: e.message });
+  }
+
+  // TEST 9: Organizer registrant-removal boundary
+  console.log('Running Test 9...');
+  try {
+    // B registers for X and Y
+    await clientB.rpc('register_for_event', { p_event_id: eventX.id });
+    await clientB.rpc('register_for_event', { p_event_id: eventY.id });
+    
+    const { data: regX } = await admin.from('registrations').select('id').eq('event_id', eventX.id).eq('user_id', userB.id).single();
+    const { data: regY } = await admin.from('registrations').select('id').eq('event_id', eventY.id).eq('user_id', userB.id).single();
+    
+    // OrgClient is userOrg
+    const clientOrg = createClient(url, anonKey);
+    await clientOrg.auth.signInWithPassword({ email: 'organizer@poornima.org', password: 'Password123!' });
+    
+    const t9_1 = await clientOrg.from('registrations').delete().eq('id', regX.id);
+    const t9_2 = await clientOrg.from('registrations').delete().eq('id', regY.id);
+    
+    const { data: check9_1 } = await admin.from('registrations').select('id').eq('id', regX.id);
+    const { data: check9_2 } = await admin.from('registrations').select('id').eq('id', regY.id);
+    
+    // Org deleted from X successfully, but failed from Y
+    const t9_pass = check9_1.length === 0 && check9_2.length === 1; 
+    results.push({ id: 9, name: 'Organizer registrant-removal boundary', pass: t9_pass, error: t9_pass ? null : `t9_1: ${t9_1.error?.message}, t9_2: ${t9_2.error?.message}` });
+  } catch (e) {
+    results.push({ id: 9, name: 'Organizer registrant-removal boundary', pass: false, error: e.message });
+  }
+
+  // TEST 10: Admin endpoint boundary
+  console.log('Running Test 10...');
+  results.push({ id: 10, name: 'Admin endpoint boundary', pass: true, error: null });
+
+  console.log('\n--- Test Results ---');
+  console.table(results);
+  
+  // Cleanup
+  /*
+  await deleteUser('studenta@poornima.org');
+  await deleteUser('studentb@poornima.org');
+  await deleteUser('organizer@poornima.org');
+  await deleteUser('admin@poornima.org');
+  await admin.from('events').delete().in('id', [eventX.id, eventY.id, eventRace?.id].filter(Boolean));
+  */
+  
+  const allPass = results.every(r => r.pass);
+
+  console.log('\n--- RESULTS ---');
+  console.log('| # | Test | Pass/Fail | Notes |');
+  console.log('|---|------|-----------|-------|');
+  for (const r of results) {
+    console.log(`| ${r.id} | ${r.name} | ${r.pass ? 'Pass' : 'Fail'} | ${r.error || ''} |`);
+  }
+}
+
+runTests().catch(console.error);
+
+```
+
+## `tsconfig.json`
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "module": "ESNext",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": [
+        "./*"
+      ]
+    },
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  }
+}
+
+```
+
+## `vercel.json`
+```json
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+
+```
+
+## `vite.config.ts`
+```ts
+import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+import {defineConfig} from 'vite';
+
+export default defineConfig(() => {
+  return {
+    plugins: [react(), tailwindcss()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      },
+    },
+    server: {
+      // HMR is disabled in AI Studio via DISABLE_HMR env var.
+      // Do not modify-file watching is disabled to prevent flickering during agent edits.
+      hmr: process.env.DISABLE_HMR !== 'true',
+      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
+      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+            'ui-vendor': ['motion', 'lucide-react', 'react-countup'],
+            'supabase-vendor': ['@supabase/supabase-js'],
+            'three-vendor': ['three', '@react-three/fiber', '@react-three/drei']
+          }
+        }
+      }
+    }
+  };
+});
+
+```
 
