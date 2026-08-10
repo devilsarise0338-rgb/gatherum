@@ -83,16 +83,18 @@ export default function EventDetailPage() {
 
   const event = liveEvent;
 
+  const eventId = event?.id;
+  const eventOrganizerId = event?.organizerId;
+
   useEffect(() => {
-    if (event) {
-      getPublicAttendeeSignal(event.id).then(setPublicAttendees).catch(console.error);
-      if (user && event.organizerId) {
-        getFollowedOrganizers().then(followed => {
-          setIsFollowing(followed.includes(event.organizerId!));
-        }).catch(console.error);
-      }
+    if (!eventId) return;
+    getPublicAttendeeSignal(eventId).then(setPublicAttendees).catch(console.error);
+    if (user && eventOrganizerId) {
+      getFollowedOrganizers().then(followed => {
+        setIsFollowing(followed.includes(eventOrganizerId));
+      }).catch(console.error);
     }
-  }, [event, getPublicAttendeeSignal, getFollowedOrganizers, user]);
+  }, [eventId, eventOrganizerId, getPublicAttendeeSignal, getFollowedOrganizers, user]);
 
   if (isLoading) {
     return (

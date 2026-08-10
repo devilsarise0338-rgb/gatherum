@@ -28,15 +28,18 @@ export default function StudentTicketsPage() {
       return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
     };
 
+    const escapeICS = (s: string) =>
+      s.replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n');
+
     const icsContent = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
       'BEGIN:VEVENT',
       `DTSTART:${formatDate(event.startTime)}`,
       `DTEND:${formatDate(event.endTime)}`,
-      `SUMMARY:${event.title}`,
-      `DESCRIPTION:${event.description}`,
-      `LOCATION:${event.location}`,
+      `SUMMARY:${escapeICS(event.title)}`,
+      `DESCRIPTION:${escapeICS(event.description)}`,
+      `LOCATION:${escapeICS(event.location)}`,
       'END:VEVENT',
       'END:VCALENDAR'
     ].join('\n');

@@ -50,7 +50,7 @@ export default function OrganizerCheckinPage() {
               setRegistrations(prev => [...prev, {
                 id: payload.new.id,
                 eventId: payload.new.event_id,
-                studentId: payload.new.student_id,
+                studentId: payload.new.user_id,
                 status: payload.new.status,
                 waitlistPosition: payload.new.waitlist_position,
                 ticketId: payload.new.ticket_id,

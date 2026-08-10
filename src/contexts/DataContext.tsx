@@ -33,7 +33,7 @@ export interface Registration {
   eventId: string;
   studentId: string;
   studentEmail?: string;
-  status: "registered" | "waitlisted";
+  status: "registered" | "waitlisted" | "cancelled" | "attended";
   waitlistPosition?: number;
   ticketId?: string;
   attended?: boolean;
@@ -174,17 +174,27 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [user, events, registrations]);
 
   const registerForEvent = useCallback(async (eventId: string) => {
-    await RegistrationService.register(eventId);
+    const { status } = await RegistrationService.register(eventId);
     const regs = await RegistrationService.getRegistrations();
     setRegistrations(regs);
-    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, registeredCount: e.registeredCount + 1 } : e));
+    setEvents(prev => prev.map(e => {
+      if (e.id !== eventId) return e;
+      return status === 'registered'
+        ? { ...e, registeredCount: e.registeredCount + 1 }
+        : { ...e, waitlistCount: e.waitlistCount + 1 };
+    }));
   }, []);
 
   const joinWaitlist = useCallback(async (eventId: string) => {
-    await RegistrationService.register(eventId);
+    const { status } = await RegistrationService.register(eventId);
     const regs = await RegistrationService.getRegistrations();
     setRegistrations(regs);
-    setEvents(prev => prev.map(e => e.id === eventId ? { ...e, waitlistCount: e.waitlistCount + 1 } : e));
+    setEvents(prev => prev.map(e => {
+      if (e.id !== eventId) return e;
+      return status === 'registered'
+        ? { ...e, registeredCount: e.registeredCount + 1 }
+        : { ...e, waitlistCount: e.waitlistCount + 1 };
+    }));
   }, []);
 
   const cancelRegistration = useCallback(async (eventId: string) => {
@@ -267,7 +277,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     events, registrations, templates, announcements, feedbacks, isLoading, error,
     registerForEvent, joinWaitlist, cancelRegistration, checkConflict, checkInUser,
     createEvent, saveTemplate, removeRegistrant, addAnnouncement, addFeedback,
-    deleteEvent, unpublishEvent
+    deleteEvent, unpublishEvent,
+    // Stable module-level references included for exhaustive-deps correctness
+    // (these never change identity, but listed so ESLint doesn't flag them)
   ]);
 
   return (

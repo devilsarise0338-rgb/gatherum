@@ -76,18 +76,18 @@ export const EventService = {
     const { data, error } = await supabase.from('registrations').select(`
       id,
       event_id,
-      student_id,
+      user_id,
       status,
       waitlist_position,
       ticket_id,
       attended,
-      profiles:student_id(email)
+      profiles:user_id(email)
     `).eq('event_id', eventId);
     if (error) throw error;
     return data.map((d: any) => ({
       id: d.id,
       eventId: d.event_id,
-      studentId: d.student_id,
+      studentId: d.user_id,
       studentEmail: d.profiles?.email,
       status: d.status,
       waitlistPosition: d.waitlist_position,
@@ -109,12 +109,12 @@ export const EventService = {
 
 export const RegistrationService = {
   getRegistrations: async (): Promise<Registration[]> => {
-    const { data, error } = await supabase.from('registrations').select('*, profiles(email)');
+    const { data, error } = await supabase.from('registrations').select('*, profiles:user_id(email)');
     if (error) throw error;
     return data.map(d => ({
       id: d.id,
       eventId: d.event_id,
-      studentId: d.student_id,
+      studentId: (d as any).user_id,
       studentEmail: (d as any).profiles?.email,
       status: d.status,
       waitlistPosition: d.waitlist_position,
@@ -123,12 +123,12 @@ export const RegistrationService = {
     })) as Registration[];
   },
   getRegistrationsForOrganizer: async (eventId: string): Promise<Registration[]> => {
-    const { data, error } = await supabase.from('registrations').select('*, profiles(email)').eq('event_id', eventId);
+    const { data, error } = await supabase.from('registrations').select('*, profiles:user_id(email)').eq('event_id', eventId);
     if (error) throw error;
     return data.map(d => ({
       id: d.id,
       eventId: d.event_id,
-      studentId: d.student_id,
+      studentId: (d as any).user_id,
       studentEmail: (d as any).profiles?.email,
       status: d.status,
       waitlistPosition: d.waitlist_position,
@@ -141,14 +141,14 @@ export const RegistrationService = {
     // Queries only attendees with public_rsvp = true
     const { data, error } = await supabase
       .from('registrations')
-      .select('student_id, profiles!inner(email, public_rsvp)')
+      .select('user_id, profiles!inner(email, public_rsvp)')
       .eq('event_id', eventId)
       .eq('status', 'registered')
       .eq('profiles.public_rsvp', true);
     
     if (error) throw error;
     return data.map(d => ({
-      studentId: d.student_id,
+      studentId: (d as any).user_id,
       studentEmail: (d as any).profiles?.email,
     }));
   },
@@ -165,7 +165,7 @@ export const RegistrationService = {
     const { error } = await supabase.from('registrations')
       .update({ status: 'cancelled' })
       .eq('event_id', eventId)
-      .eq('student_id', userData.user.id);
+      .eq('user_id', userData.user.id);
     if (error) throw error;
   },
 
@@ -211,7 +211,7 @@ export const UserCommunicationService = {
     return data.map(d => ({
       id: d.id,
       eventId: d.event_id,
-      studentId: d.student_id,
+      studentId: (d as any).user_id,
       studentEmail: (d as any).profiles?.email,
       rating: d.rating,
       comment: d.comment
@@ -233,7 +233,7 @@ export const UserCommunicationService = {
 
     const { error } = await supabase.from('feedbacks').insert({
       event_id: feedback.eventId,
-      student_id: userData.user.id,
+      user_id: userData.user.id,
       rating: feedback.rating,
       comment: feedback.comment
     });
