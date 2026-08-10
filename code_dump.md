@@ -156,7 +156,7 @@ export const EventService = {
       id: d.id,
       title: d.title,
       description: d.description,
-      date: d.date,
+      startTime: d.start_time,
       endTime: d.end_time,
       location: d.location,
       department: d.department,
@@ -171,7 +171,7 @@ export const EventService = {
   },
 
   getEventById: async (eventId: string): Promise<CampusEvent | null> => {
-    const { data, error } = await supabase.from('events').select('id, title, description, date, end_time, location, department, category, capacity, registered_count, waitlist_count, poster_url, is_unpublished, organizer_id').eq('id', eventId).single();
+    const { data, error } = await supabase.from('events').select('id, title, description, start_time, end_time, location, department, category, capacity, registered_count, waitlist_count, poster_url, is_unpublished, organizer_id').eq('id', eventId).single();
     if (error) {
       if (error.code === 'PGRST116') return null; // Not found
       throw error;
@@ -180,7 +180,7 @@ export const EventService = {
       id: data.id,
       title: data.title,
       description: data.description,
-      date: data.date,
+      startTime: data.start_time,
       endTime: data.end_time,
       location: data.location,
       department: data.department,
@@ -201,7 +201,7 @@ export const EventService = {
     const payload = {
       title: eventData.title,
       description: eventData.description,
-      date: eventData.date,
+      start_time: eventData.startTime,
       end_time: eventData.endTime,
       location: eventData.location,
       department: eventData.department,
@@ -579,7 +579,7 @@ export interface CampusEvent {
   id: string;
   title: string;
   description: string;
-  date: string;
+  startTime: string;
   endTime: string;
   location: string;
   department: string;
@@ -724,9 +724,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const registeredEvent = events.find(e => e.id === reg.eventId);
       if (registeredEvent && registeredEvent.id !== eventId) {
         const parseDate = (d: string) => d.length === 10 ? new Date(d + 'T00:00:00').getTime() : new Date(d).getTime();
-        const tStart = parseDate(targetEvent.date);
+        const tStart = parseDate(targetEvent.startTime);
         const tEnd = parseDate(targetEvent.endTime);
-        const rStart = parseDate(registeredEvent.date);
+        const rStart = parseDate(registeredEvent.startTime);
         const rEnd = parseDate(registeredEvent.endTime);
         
         if (tStart < rEnd && tEnd > rStart) {
@@ -1130,9 +1130,9 @@ export default function EventDetailPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900 dark:text-white">
-                      {new Date(event.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                      {new Date(event.startTime).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                     </p>
-                    <p>{new Date(event.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {new Date(event.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
+                    <p>{new Date(event.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {new Date(event.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
                   </div>
                 </motion.div>
                 
@@ -1327,7 +1327,7 @@ export default function EventDetailPage() {
                 <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                   <Clock className="w-4 h-4" aria-hidden="true" />
                   <span>
-                    {new Date(conflictEvent.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
+                    {new Date(conflictEvent.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
                     {new Date(conflictEvent.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                   </span>
                 </div>
@@ -2249,6 +2249,1234 @@ export default function OrganizerCheckinPage() {
         )}
       </div>
     </div>
+  );
+}
+```
+
+
+## File: src/components/LandingPage.tsx
+
+```typescript
+import { Calendar, Users, Zap } from "lucide-react";
+import { Link } from "react-router-dom";
+import { motion, useReducedMotion } from "motion/react";
+import React, { Suspense } from "react";
+import { pageTransition } from "../utils/motion";
+import { useData } from "../contexts/DataContext";
+import SkeletonLoader from "./SkeletonLoader";
+import TiltCard from "./TiltCard";
+
+const LandingHero3D = React.lazy(() => import("./LandingHero3D"));
+
+export default function LandingPage() {
+  const shouldReduceMotion = useReducedMotion();
+  const { events, isLoading } = useData();
+  
+  // Get up to 3 upcoming events
+  const now = new Date().getTime();
+  const upcomingEvents = events
+    .filter(e => !e.isUnpublished && new Date(e.endTime).getTime() > now)
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
+    .slice(0, 3);
+
+  const staggerContainer = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.15
+      }
+    }
+  };
+
+  const itemAnim = {
+    hidden: { opacity: 0, y: shouldReduceMotion ? 0 : 30 },
+    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 24 } }
+  };
+
+  return (
+    <motion.div 
+      variants={pageTransition}
+      initial="initial"
+      animate="animate"
+      exit="exit"
+      className="flex flex-col min-h-[calc(100vh-4rem)] relative"
+    >
+      {/* Hero Section */}
+      <section className="relative px-4 py-24 sm:py-32 lg:py-40 flex flex-col items-center text-center overflow-hidden min-h-[80vh] justify-center">
+        <div className="absolute inset-0 -z-20 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/10 via-bg-light to-bg-light dark:from-primary/20 dark:via-bg-dark dark:to-bg-dark"></div>
+        
+        {!shouldReduceMotion && (
+          <Suspense fallback={null}>
+            <LandingHero3D />
+          </Suspense>
+        )}
+
+        <motion.div 
+          initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" as any }}
+          className="relative z-10"
+        >
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent/20 text-accent-darker dark:text-accent mb-8">
+            <span className="flex h-2 w-2 rounded-full bg-accent"></span>
+            <span className="text-sm font-semibold tracking-wide uppercase">Your Campus, Live</span>
+          </div>
+          
+          <h1 className="max-w-4xl text-5xl md:text-7xl font-bold tracking-tight text-gray-900 dark:text-white mb-6 drop-shadow-sm">
+            Experience <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">College Events</span> Like Never Before
+          </h1>
+          
+          <p className="max-w-2xl text-lg md:text-xl text-gray-600 dark:text-gray-300 mb-10 leading-relaxed mx-auto drop-shadow-sm bg-white/50 dark:bg-black/50 p-4 rounded-2xl backdrop-blur-sm">
+            Gatherum brings all your university happenings into one vibrant platform. Discover parties, academic talks, and club meetups instantly.
+          </p>
+          
+          <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto justify-center">
+            <Link to="/signup" className="px-8 py-4 rounded-full bg-primary text-white font-semibold text-lg hover:bg-primary-hover hover:scale-105 transition-all shadow-lg shadow-primary/30">
+              Join Gatherum
+            </Link>
+            <Link to="/login" className="px-8 py-4 rounded-full bg-white/80 dark:bg-surface-dark/80 backdrop-blur-md text-gray-900 dark:text-white font-semibold text-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
+              Sign In
+            </Link>
+          </div>
+        </motion.div>
+      </section>
+
+      {/* Features / Upcoming Events */}
+      <section id="features" className="py-24 bg-white dark:bg-surface-dark transition-colors relative z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div 
+            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.5 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900 dark:text-white">Trending on Campus</h2>
+            <p className="text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">Don't miss out on what everyone will be talking about tomorrow.</p>
+          </motion.div>
+          
+          <motion.div 
+            variants={staggerContainer}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: "-100px" }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-8"
+          >
+            {isLoading ? (
+              <SkeletonLoader type="card" count={3} />
+            ) : upcomingEvents.length > 0 ? (
+              upcomingEvents.map((event) => (
+                <Link key={event.id} to={`/events/${event.id}`} className="block h-full">
+                  <TiltCard className="h-full flex flex-col">
+                    <div className="aspect-[4/3] bg-gray-200 dark:bg-gray-800 relative overflow-hidden">
+                      <img src={event.posterUrl} alt={event.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-80 group-hover:opacity-100 transition-opacity"></div>
+                      <div className="absolute bottom-4 left-4 z-20">
+                        <span className="px-3 py-1 bg-primary text-white text-xs font-bold rounded-full tracking-wider">{event.category}</span>
+                      </div>
+                    </div>
+                    <div className="p-6 flex flex-col flex-grow bg-white dark:bg-surface-dark border border-gray-100 dark:border-gray-800 rounded-b-2xl shadow-sm">
+                      <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-white group-hover:text-primary transition-colors line-clamp-1">{event.title}</h3>
+                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
+                        <Calendar className="w-4 h-4 text-primary" />
+                        <span className="font-medium">{new Date(event.startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} • {new Date(event.startTime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
+                      </div>
+                      <p className="text-gray-600 dark:text-gray-300 text-sm mb-6 line-clamp-2">{event.description}</p>
+                      
+                      <div className="mt-auto pt-4 border-t border-gray-100 dark:border-gray-800 flex justify-between items-center">
+                        <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400">
+                          <Users className="w-4 h-4" />
+                          <span>{event.registeredCount} / {event.capacity}</span>
+                        </div>
+                        <span className="text-primary font-bold">View Details →</span>
+                      </div>
+                    </div>
+                  </TiltCard>
+                </Link>
+              ))
+            ) : (
+              <div className="col-span-3 text-center py-12 text-gray-500 dark:text-gray-400">
+                Check back soon for new events!
+              </div>
+            )}
+          </motion.div>
+        </div>
+      </section>
+    </motion.div>
+  );
+}
+```
+
+
+## File: src/components/StudentDashboard.tsx
+
+```typescript
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { motion, AnimatePresence } from "motion/react";
+import DashboardLayout from "./DashboardLayout";
+import { Ticket, Calendar, Search, Clock, ArrowRight, Megaphone, Star, Check, Shield, Plus } from "lucide-react";
+import { useData } from "../contexts/DataContext";
+import { useAuth } from "../contexts/AuthContext";
+import StudentOnboarding from "./StudentOnboarding";
+import { pageTransition, cardHover } from "../utils/motion";
+import TiltCard from "./TiltCard";
+import SkeletonLoader from "./SkeletonLoader";
+import EmptyState from "./EmptyState";
+import ErrorState from "./ErrorState";
+
+export default function StudentDashboard() {
+  const { events, registrations, announcements, feedbacks, addFeedback, getMyVolunteeringEvents, isLoading, error } = useData();
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<"upcoming" | "past" | "waitlist">("upcoming");
+  const [feedbackState, setFeedbackState] = useState<{ [eventId: string]: { rating: number, comment: string } }>({});
+  const [volunteeringEventIds, setVolunteeringEventIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    getMyVolunteeringEvents().then(setVolunteeringEventIds).catch(console.error);
+  }, [getMyVolunteeringEvents]);
+
+  if (!user) return null;
+
+  const userRegs = registrations.filter(r => r.studentId === user?.id);
+  
+  const now = new Date().getTime();
+  
+  const upcomingEvents = userRegs
+    .filter(r => r.status === "registered")
+    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
+    .filter(item => item.event && new Date(item.event.endTime).getTime() > now)
+    .sort((a, b) => new Date(a.event!.startTime).getTime() - new Date(b.event!.startTime).getTime());
+
+  const pastEvents = userRegs
+    .filter(r => r.status === "registered")
+    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
+    .filter(item => item.event && new Date(item.event.endTime).getTime() <= now)
+    .sort((a, b) => new Date(b.event!.startTime).getTime() - new Date(a.event!.startTime).getTime());
+
+  const waitlistedEvents = userRegs
+    .filter(r => r.status === "waitlisted")
+    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }));
+
+  const volunteeringEvents = events.filter(e => volunteeringEventIds.includes(e.id)).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+  const userCategories = new Set([...upcomingEvents, ...pastEvents].map(item => item.event?.category));
+  const recommendedEvents = events
+    .filter(e => new Date(e.endTime).getTime() > now)
+    .filter(e => !userRegs.some(r => r.eventId === e.id) && !volunteeringEventIds.includes(e.id))
+    .filter(e => userCategories.size === 0 || userCategories.has(e.category))
+    .slice(0, 3);
+
+  const upcomingEventIds = upcomingEvents.map(u => u.event!.id);
+  const relevantAnnouncements = announcements
+    .filter(a => upcomingEventIds.includes(a.eventId))
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 3);
+
+  const handleFeedbackSubmit = (eventId: string) => {
+    const data = feedbackState[eventId];
+    if (data && data.rating > 0) {
+      addFeedback({
+        eventId,
+        studentEmail: user.email,
+        rating: data.rating,
+        comment: data.comment
+      });
+    }
+  };
+
+  const renderEventList = (list: any[], emptyMessage: string, emptyActionText: string) => {
+    if (list.length === 0) {
+      return (
+        <EmptyState 
+          icon={<Calendar className="w-8 h-8" />}
+          title={emptyMessage}
+          description="You can browse more events on the discovery page."
+          actionText={emptyActionText}
+          actionHref="/events"
+        />
+      );
+    }
+
+    return (
+      <motion.div 
+        className="space-y-4" 
+        role="list"
+        initial="hidden"
+        animate="show"
+        variants={{
+          hidden: { opacity: 0 },
+          show: {
+            opacity: 1,
+            transition: { staggerChildren: 0.1 }
+          }
+        }}
+      >
+        <AnimatePresence mode="popLayout">
+          {list.map(({ reg, event }) => {
+            const isPast = activeTab === "past";
+            const hasFeedback = feedbacks.some(f => f.eventId === event.id && f.studentId === user?.id);
+            const feedbackData = feedbackState[event.id] || { rating: 0, comment: "" };
+
+            return (
+              <motion.div 
+                key={reg.id} 
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                whileHover={cardHover}
+                className="bg-white dark:bg-surface-dark rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden hover:border-primary/50 hover:shadow-md transition-shadow"
+                role="listitem"
+              >
+              <Link 
+                to={`/events/${event.id}`}
+                className="flex items-center gap-6 p-4 group focus:outline-none focus:bg-gray-50 dark:focus:bg-gray-800/50"
+                aria-label={`View details for ${event.title}`}
+              >
+                <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 hidden sm:block bg-gray-100 dark:bg-gray-800" aria-hidden="true">
+                  <img src={event.posterUrl} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                </div>
+                <div className="flex-grow min-w-0">
+                  <div className="flex justify-between items-start mb-1">
+                    <h4 className="font-bold text-lg text-gray-900 dark:text-white truncate pr-4">{event.title}</h4>
+                    {reg.status === 'waitlisted' && (
+                      <span className="shrink-0 px-3 py-1 bg-accent/10 text-accent-darker dark:text-accent text-xs font-bold rounded-full" aria-label={`Waitlist position ${reg.waitlistPosition}`}>
+                        Waitlist #{reg.waitlistPosition}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-4 h-4" aria-hidden="true" />
+                      {new Date(event.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                    <span className="flex items-center gap-1 hidden md:flex truncate">
+                      <Clock className="w-4 h-4" aria-hidden="true" />
+                      {event.location}
+                    </span>
+                  </div>
+                </div>
+                <div className="shrink-0 p-2 text-gray-400 group-hover:text-primary transition-colors">
+                  <ArrowRight className="w-5 h-5" aria-hidden="true" />
+                </div>
+              </Link>
+              
+              <AnimatePresence mode="wait">
+                {isPast && !hasFeedback && (
+                  <motion.div 
+                    key="form"
+                    exit={{ opacity: 0, height: 0, overflow: "hidden" }}
+                    className="border-t border-gray-100 dark:border-gray-800 p-4 bg-gray-50 dark:bg-gray-800/30"
+                  >
+                    <p className="text-sm font-bold text-gray-900 dark:text-white mb-3" id={`feedback-label-${event.id}`}>How was the event?</p>
+                    <div className="flex flex-col sm:flex-row gap-4" role="group" aria-labelledby={`feedback-label-${event.id}`}>
+                      <div className="flex gap-1" role="radiogroup" aria-label="Rating">
+                        {[1, 2, 3, 4, 5].map(star => (
+                          <button 
+                            key={star}
+                            onClick={() => setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, rating: star } }))}
+                            onKeyDown={(e) => {
+                              if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                                e.preventDefault();
+                                const next = star < 5 ? star + 1 : 1;
+                                setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, rating: next } }));
+                              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                                e.preventDefault();
+                                const prev = star > 1 ? star - 1 : 5;
+                                setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, rating: prev } }));
+                              }
+                            }}
+                            tabIndex={feedbackData.rating === star || (feedbackData.rating === 0 && star === 1) ? 0 : -1}
+                            className="focus:outline-none focus:ring-2 focus:ring-primary rounded-sm"
+                            role="radio"
+                            aria-checked={feedbackData.rating === star}
+                            aria-label={`${star} star${star > 1 ? 's' : ''}`}
+                          >
+                            <Star className={`w-6 h-6 ${star <= feedbackData.rating ? "text-yellow-400 fill-current" : "text-gray-300 dark:text-gray-600 hover:text-yellow-200"}`} />
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex-1 flex gap-2">
+                        <input 
+                          type="text" 
+                          value={feedbackData.comment}
+                          onChange={e => setFeedbackState(prev => ({ ...prev, [event.id]: { ...feedbackData, comment: e.target.value } }))}
+                          placeholder="Add a comment (optional)..." 
+                          aria-label="Additional feedback comment"
+                          className="flex-1 text-sm p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-bg-dark outline-none focus:ring-2 focus:ring-primary"
+                        />
+                        <button 
+                          onClick={() => handleFeedbackSubmit(event.id)}
+                          disabled={feedbackData.rating === 0}
+                          aria-label="Submit feedback"
+                          className="px-4 py-2 bg-primary text-white text-sm font-bold rounded-lg hover:bg-primary-hover transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:focus:ring-offset-bg-dark"
+                        >
+                          Submit
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+                {isPast && hasFeedback && (
+                  <motion.div 
+                    key="success"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="border-t border-gray-100 dark:border-gray-800 p-4 bg-green-50 dark:bg-green-900/10 flex items-center gap-2 text-green-700 dark:text-green-400 text-sm font-bold" 
+                    role="status"
+                  >
+                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", bounce: 0.5 }}>
+                      <Check className="w-5 h-5 text-green-500" aria-hidden="true" /> 
+                    </motion.div>
+                    Feedback submitted. Thank you!
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+        </AnimatePresence>
+      </motion.div>
+    );
+  };
+
+  return (
+    <DashboardLayout>
+      <StudentOnboarding />
+      <motion.div 
+        variants={pageTransition} 
+        initial="initial" 
+        animate="animate" 
+        exit="exit" 
+        className="max-w-5xl mx-auto space-y-10"
+      >
+        <header>
+          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-2 tracking-tight">Student Dashboard</h1>
+          <p className="text-lg text-gray-500 dark:text-gray-400">Manage your schedule and discover new experiences.</p>
+        </header>
+
+        {error ? (
+          <ErrorState 
+            title="Failed to load dashboard" 
+            message="There was a problem connecting to the server. Please try refreshing."
+            onRetry={() => window.location.reload()}
+          />
+        ) : isLoading ? (
+          <div className="space-y-8">
+            <SkeletonLoader type="card" className="h-40" />
+            <SkeletonLoader type="card" count={3} />
+          </div>
+        ) : (
+          <>
+            {relevantAnnouncements.length > 0 && (
+          <section className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900 rounded-3xl p-6" aria-labelledby="announcements-heading">
+            <h2 id="announcements-heading" className="font-bold text-blue-900 dark:text-blue-100 mb-4 flex items-center gap-2">
+              <Megaphone className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden="true" /> Recent Announcements
+            </h2>
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {relevantAnnouncements.map(ann => {
+                const eventForAnn = events.find(e => e.id === ann.eventId);
+                return (
+                  <motion.div 
+                    key={ann.id} 
+                    whileHover={cardHover}
+                    className="bg-white dark:bg-surface-dark p-4 rounded-2xl shadow-sm border border-blue-100/50 dark:border-blue-800/50"
+                  >
+                    <div className="text-xs text-blue-600 dark:text-blue-400 font-bold mb-1">{eventForAnn?.title}</div>
+                    <h3 className="font-bold text-gray-900 dark:text-white mb-2">{ann.title}</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">{ann.content}</p>
+                  </motion.div>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        {volunteeringEvents.length > 0 && (
+          <section className="mb-12">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <Shield className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Events You're Helping With</h2>
+                <p className="text-gray-500">You are a volunteer for these events</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {volunteeringEvents.map(event => (
+                <Link 
+                  key={`vol-${event.id}`}
+                  to={`/checkin/${event.id}`}
+                  className="bg-white dark:bg-surface-dark p-4 rounded-2xl border border-purple-100 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-500/50 hover:shadow-md transition-all flex items-center gap-4 group"
+                >
+                  <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-gray-100 dark:bg-gray-800">
+                    <img src={event.posterUrl} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                  </div>
+                  <div className="flex-grow min-w-0">
+                    <h4 className="font-bold text-gray-900 dark:text-white truncate">{event.title}</h4>
+                    <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
+                      <Calendar className="w-4 h-4" />
+                      {new Date(event.startTime).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div className="shrink-0 p-2 text-purple-600 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Tabs and Event Lists */}
+        <section>
+          <div 
+            className="flex gap-2 overflow-x-auto pb-4 mb-6 border-b border-gray-200 dark:border-gray-800 scrollbar-hide" 
+            role="tablist" 
+            aria-label="Event categories"
+          >
+            {[
+              { id: "upcoming", label: "Upcoming", count: upcomingEvents.length },
+              { id: "waitlist", label: "Waitlist", count: waitlistedEvents.length },
+              { id: "past", label: "Past Events", count: pastEvents.length }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                aria-controls={`${tab.id}-panel`}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center gap-2 px-5 py-3 rounded-t-xl font-semibold transition-colors border-b-2 -mb-[18px] focus:outline-none focus:ring-2 focus:ring-primary ${
+                  activeTab === tab.id
+                    ? "text-primary border-primary bg-primary/5 dark:bg-primary/10"
+                    : "text-gray-500 border-transparent hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                }`}
+              >
+                {tab.label}
+                <span className={`px-2 py-0.5 rounded-full text-xs ${
+                  activeTab === tab.id ? 'bg-primary text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="min-h-[300px]" id={`${activeTab}-panel`} role="tabpanel">
+            {activeTab === "upcoming" && renderEventList(
+              upcomingEvents, 
+              "You don't have any upcoming events.", 
+              "Browse what's happening"
+            )}
+            {activeTab === "waitlist" && renderEventList(
+              waitlistedEvents, 
+              "You are not on any waitlists.", 
+              "Explore high-demand events"
+            )}
+            {activeTab === "past" && renderEventList(
+              pastEvents, 
+              "No past events to show.", 
+              "Find your first event"
+            )}
+          </div>
+        </section>
+
+        {/* Recommended Section */}
+        {recommendedEvents.length > 0 && (
+          <section className="pt-8 border-t border-gray-200 dark:border-gray-800" aria-labelledby="recommended-heading">
+            <div className="flex items-center justify-between mb-6">
+              <h2 id="recommended-heading" className="text-2xl font-bold text-gray-900 dark:text-white">Recommended for You</h2>
+              <Link to="/events" className="text-primary font-medium hover:underline text-sm flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-primary rounded-md p-1">
+                View All <ArrowRight className="w-4 h-4" aria-hidden="true" />
+              </Link>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {recommendedEvents.map(event => (
+                <motion.div key={event.id} whileHover={cardHover}>
+                  <TiltCard>
+                    <Link 
+                      to={`/events/${event.id}`}
+                      className="block group bg-white dark:bg-surface-dark rounded-2xl overflow-hidden border border-gray-100 dark:border-gray-800 hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-primary h-full"
+                      aria-label={`View recommended event: ${event.title}`}
+                    >
+                      <div className="h-32 bg-gray-200 dark:bg-gray-800 relative overflow-hidden" aria-hidden="true">
+                        <img src={event.posterUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <div className="absolute top-3 right-3 bg-white/90 dark:bg-surface-dark/90 backdrop-blur-sm px-2 py-0.5 rounded-md text-xs font-bold">
+                          {event.category}
+                        </div>
+                      </div>
+                      <div className="p-4 flex flex-col justify-between h-[calc(100%-8rem)]">
+                        <div>
+                          <h4 className="font-bold text-gray-900 dark:text-white mb-2 line-clamp-1 group-hover:text-primary transition-colors">{event.title}</h4>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1">
+                            <Calendar className="w-3 h-3" aria-hidden="true" />
+                            {new Date(event.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </p>
+                        </div>
+                        <span className="text-sm font-semibold text-primary">View Details</span>
+                      </div>
+                    </Link>
+                  </TiltCard>
+                </motion.div>
+              ))}
+            </div>
+          </section>
+        )}
+          </>
+        )}
+      </motion.div>
+
+      {user?.role === 'organizer' && (
+        <Link
+          to="/organizer/events/new"
+          className="fixed bottom-8 right-8 bg-primary hover:bg-primary-hover text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg shadow-primary/30 transition-transform hover:scale-105 z-50"
+          title="Create New Event"
+        >
+          <Plus className="w-6 h-6" />
+        </Link>
+      )}
+    </DashboardLayout>
+  );
+}
+```
+
+
+## File: src/components/StudentTicketsPage.tsx
+
+```typescript
+import { Link } from "react-router-dom";
+import { motion } from "motion/react";
+import DashboardLayout from "./DashboardLayout";
+import { useData } from "../contexts/DataContext";
+import { useAuth } from "../contexts/AuthContext";
+import { QRCodeSVG } from "qrcode.react";
+import { Calendar, MapPin, Clock, Download, Ticket } from "lucide-react";
+import { pageTransition, cardHover } from "../utils/motion";
+import SkeletonLoader from "./SkeletonLoader";
+import EmptyState from "./EmptyState";
+import ErrorState from "./ErrorState";
+
+export default function StudentTicketsPage() {
+  const { events, registrations, isLoading, error } = useData();
+  const { user } = useAuth();
+
+  if (!user) return null;
+
+  const userTickets = registrations
+    .filter(r => r.studentId === user?.id && r.status === "registered")
+    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
+    .filter(item => item.event)
+    .sort((a, b) => new Date(b.event!.startTime).getTime() - new Date(a.event!.startTime).getTime());
+
+  const generateICS = (event: any) => {
+    const formatDate = (dateString: string) => {
+      const d = new Date(dateString);
+      return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    };
+
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'BEGIN:VEVENT',
+      `DTSTART:${formatDate(event.startTime)}`,
+      `DTEND:${formatDate(event.endTime)}`,
+      `SUMMARY:${event.title}`,
+      `DESCRIPTION:${event.description}`,
+      `LOCATION:${event.location}`,
+      'END:VEVENT',
+      'END:VCALENDAR'
+    ].join('\n');
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `${event.title.replace(/\s+/g, '_')}.ics`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
+    <DashboardLayout>
+      <motion.div 
+        variants={pageTransition}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        className="max-w-5xl mx-auto space-y-8"
+      >
+        <header>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">My Tickets</h1>
+          <p className="text-gray-500 dark:text-gray-400">Access your QR codes and event details.</p>
+        </header>
+
+        {error ? (
+          <ErrorState 
+            title="Failed to load tickets" 
+            message="There was a problem connecting to the server. Please try refreshing."
+            onRetry={() => window.location.reload()}
+          />
+        ) : isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <SkeletonLoader type="card" className="h-[400px]" count={2} />
+          </div>
+        ) : userTickets.length === 0 ? (
+          <EmptyState 
+            icon={<Ticket className="w-8 h-8" />}
+            title="You have no tickets yet."
+            description="Register for an event to see your ticket here."
+            actionText="Browse Events"
+            actionHref="/events"
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8" role="list">
+            {userTickets.map(({ reg, event }, i) => (
+              <motion.div 
+                key={reg.id} 
+                initial={{ opacity: 0, rotateX: -90, y: 50, perspective: 1000 }}
+                animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                transition={{ 
+                  type: "spring", 
+                  stiffness: 260, 
+                  damping: 20, 
+                  delay: i * 0.15 
+                }}
+                whileHover={cardHover}
+                className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 shadow-xl overflow-hidden flex flex-col relative"
+                role="listitem"
+                style={{ transformStyle: "preserve-3d" }}
+              >
+                <div className="h-24 bg-primary/10 flex items-center justify-center relative overflow-hidden" aria-hidden="true">
+                  <div className="absolute inset-0 opacity-20" style={{ backgroundImage: `url(${event!.posterUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }}></div>
+                  <h3 className="relative z-10 text-xl font-bold text-gray-900 dark:text-white text-center px-4">{event!.title}</h3>
+                </div>
+                
+                <div className="p-6 flex flex-col items-center flex-grow">
+                  <div className="mb-6 p-4 bg-white rounded-2xl shadow-sm border border-gray-100 inline-block" aria-label="Ticket QR Code">
+                    {reg.ticketId ? (
+                      <QRCodeSVG value={reg.ticketId} size={150} level="H" aria-hidden="true" />
+                    ) : (
+                      <div className="w-[150px] h-[150px] bg-gray-100 flex items-center justify-center text-gray-400 text-sm">No QR Code</div>
+                    )}
+                  </div>
+                  
+                  <div className="w-full space-y-3 mb-6">
+                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                      <Calendar className="w-4 h-4 text-primary" aria-hidden="true" />
+                      <span>{new Date(event!.startTime).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                      <Clock className="w-4 h-4 text-accent" aria-hidden="true" />
+                      <span>{new Date(event!.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
+                      <MapPin className="w-4 h-4 text-gray-400" aria-hidden="true" />
+                      <span className="truncate">{event!.location}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-auto w-full flex flex-col gap-2">
+                    {reg.ticketId && (
+                      <div className="text-center mb-2">
+                        <span className="text-xs text-gray-400 font-mono" aria-label={`Ticket ID: ${reg.ticketId}`}>ID: {reg.ticketId}</span>
+                      </div>
+                    )}
+                    <button 
+                      onClick={() => generateICS(event)}
+                      className="w-full py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 flex items-center justify-center gap-2 font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+                      aria-label={`Download calendar invite for ${event!.title}`}
+                    >
+                      <Download className="w-4 h-4" aria-hidden="true" /> Add to Calendar
+                    </button>
+                    <Link 
+                      to={`/events/${event!.id}`}
+                      className="w-full py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-center font-medium hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+                      aria-label={`View details for ${event!.title}`}
+                    >
+                      View Event Details
+                    </Link>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
+      </motion.div>
+    </DashboardLayout>
+  );
+}
+```
+
+
+## File: src/components/OrganizerEventWizard.tsx
+
+```typescript
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import DashboardLayout from "./DashboardLayout";
+import { useData, EventCategory } from "../contexts/DataContext";
+import { ArrowRight, ArrowLeft, Check, Save } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import toast from "react-hot-toast";
+import SkeletonLoader from "./SkeletonLoader";
+import ErrorState from "./ErrorState";
+import { useAccessibleMotion } from "../hooks/useAccessibleMotion";
+
+// Framer motion variants for step transitions
+const slideVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 50 : -50,
+    opacity: 0
+  }),
+  center: {
+    zIndex: 1,
+    x: 0,
+    opacity: 1
+  },
+  exit: (direction: number) => ({
+    zIndex: 0,
+    x: direction < 0 ? 50 : -50,
+    opacity: 0
+  })
+};
+
+const ValidCheck = ({ isValid }: { isValid: boolean }) => (
+  <AnimatePresence>
+    {isValid && (
+      <motion.div
+        initial={{ opacity: 0, scale: 0 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0 }}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500"
+      >
+        <Check className="w-5 h-5" />
+      </motion.div>
+    )}
+  </AnimatePresence>
+);
+
+export default function OrganizerEventWizard() {
+  const prefersReducedMotion = useAccessibleMotion();
+  const { createEvent, saveTemplate, templates, isLoading, error } = useData();
+  const navigate = useNavigate();
+
+  const [step, setStep] = useState(1);
+  const [direction, setDirection] = useState(0); // 1 for forward, -1 for backward
+
+  const [formData, setFormData] = useState({
+    title: "",
+    description: "",
+    startTime: "",
+    endTime: "",
+    location: "",
+    department: "",
+    category: "Social" as EventCategory,
+    capacity: 0,
+    posterUrl: ""
+  });
+  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: name === "capacity" ? parseInt(value) || 0 : value
+    }));
+  };
+
+  const loadTemplate = (templateId: string) => {
+    const t = templates.find(t => t.id === templateId);
+    if (t) {
+      setFormData({
+        title: t.title,
+        description: t.description,
+        startTime: "",
+        endTime: "",
+        location: t.location,
+        department: t.department,
+        category: t.category,
+        capacity: t.capacity,
+        posterUrl: t.posterUrl
+      });
+      toast.success(`Loaded template: ${t.name}`);
+    }
+  };
+
+  const paginate = (newDirection: number) => {
+    setDirection(newDirection);
+    setStep(step + newDirection);
+  };
+
+  const isTitleValid = formData.title.trim().length > 0;
+  const isDescValid = formData.description.trim().length > 0;
+  const isStep1Valid = isTitleValid && isDescValid;
+
+  const isDateValid = formData.startTime !== "";
+  const isEndTimeValid = formData.endTime !== "";
+  const isLocValid = formData.location.trim().length > 0;
+  const isDeptValid = formData.department.trim().length > 0;
+  const isStep2Valid = isDateValid && isEndTimeValid && isLocValid && isDeptValid;
+
+  const isCapValid = formData.capacity > 0;
+  const isPosterValid = formData.posterUrl.trim().length > 0;
+  const isStep3Valid = isCapValid && isPosterValid;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isStep1Valid && isStep2Valid && isStep3Valid) {
+      const eventId = createEvent(formData);
+      
+      if (saveAsTemplate && templateName.trim() !== "") {
+        saveTemplate({
+          name: templateName,
+          title: formData.title,
+          description: formData.description,
+          location: formData.location,
+          department: formData.department,
+          category: formData.category,
+          capacity: formData.capacity,
+          posterUrl: formData.posterUrl
+        });
+        toast.success("Template saved!");
+      }
+      
+      toast.success("Event created successfully!");
+      navigate(`/organizer/events/${eventId}`);
+    } else {
+      toast.error("Please fill in all required fields.");
+    }
+  };
+
+  const handleQuickCreate = () => {
+    if (!isStep1Valid) {
+      toast.error("Please provide at least a title and description.");
+      return;
+    }
+    
+    // Auto-fill remaining fields with default values
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    
+    const quickData = {
+      ...formData,
+      startTime: formData.startTime || tomorrowStr,
+      endTime: formData.endTime || tomorrowStr + "T14:00",
+      location: formData.location || "TBA",
+      department: formData.department || "General",
+      capacity: formData.capacity || 100,
+      posterUrl: formData.posterUrl || "https://images.unsplash.com/photo-1540575467063-178a50c2df87?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+    };
+    
+    const eventId = createEvent(quickData);
+    toast.success("Quick Event created successfully!");
+    navigate(`/organizer/events/${eventId}`);
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="max-w-3xl mx-auto py-8">
+        <header className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Create New Event</h1>
+            <p className="text-gray-500 dark:text-gray-400">Step {step} of 3</p>
+          </div>
+          {templates.length > 0 && step === 1 && (
+            <select 
+              className="p-2 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-surface-dark focus:ring-2 focus:ring-primary outline-none"
+              onChange={(e) => loadTemplate(e.target.value)}
+              defaultValue=""
+            >
+              <option value="" disabled>Load from Template...</option>
+              {templates.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          )}
+        </header>
+
+        {/* Progress Bar */}
+        <div className="flex gap-2 mb-8">
+          {[1, 2, 3].map(s => (
+            <motion.div 
+              key={s} 
+              layout
+              className={`h-2 flex-1 rounded-full ${step >= s ? 'bg-primary' : 'bg-gray-200 dark:bg-gray-700'}`} 
+            />
+          ))}
+        </div>
+
+        {error ? (
+          <ErrorState 
+            title="Failed to load wizard" 
+            message="There was a problem connecting to the server. Please try refreshing."
+            onRetry={() => window.location.reload()}
+          />
+        ) : isLoading ? (
+          <div className="bg-white dark:bg-surface-dark p-8 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden min-h-[400px] flex flex-col space-y-6">
+            <SkeletonLoader type="card" className="h-16" count={4} />
+          </div>
+        ) : (
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-surface-dark p-8 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm relative overflow-hidden min-h-[400px]">
+          <AnimatePresence initial={false} custom={direction} mode="wait">
+            
+            {/* ── STEP 1 ── */}
+            {step === 1 && (
+              <motion.div 
+                key="step1"
+                custom={direction}
+                variants={prefersReducedMotion ? {} : slideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                className="space-y-6"
+              >
+                <div className="relative">
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Event Title</label>
+                  <input
+                    type="text"
+                    name="title"
+                    value={formData.title}
+                    onChange={handleInputChange}
+                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none pr-10"
+                    placeholder="e.g., Spring Music Festival"
+                  />
+                  <ValidCheck isValid={isTitleValid} />
+                  {!isTitleValid && formData.title !== "" && <p className="text-sm text-red-500 mt-1">Title is required.</p>}
+                </div>
+                
+                <div className="relative">
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Description</label>
+                  <textarea
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    rows={5}
+                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none pr-10"
+                    placeholder="Describe your event..."
+                  />
+                  <ValidCheck isValid={isDescValid} />
+                </div>
+
+                <div className="flex justify-between items-center pt-8 border-t border-gray-100 dark:border-gray-800">
+                  <button
+                    type="button"
+                    onClick={handleQuickCreate}
+                    disabled={!isStep1Valid}
+                    className="px-4 py-2 font-bold text-sm text-primary hover:text-primary-hover disabled:opacity-50 transition-colors flex items-center gap-1"
+                  >
+                    🚀 Quick Create (Skip details)
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => paginate(1)} 
+                    disabled={!isStep1Valid}
+                    className="px-6 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    Next <ArrowRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* ── STEP 2 ── */}
+            {step === 2 && (
+              <motion.div
+                key={step}
+                custom={direction}
+                variants={prefersReducedMotion ? {} : slideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                className="bg-white dark:bg-surface-dark border border-gray-100 dark:border-gray-800 rounded-3xl p-8 shadow-sm"
+              >    
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="relative">
+                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Start Time</label>
+                    <input
+                      type="datetime-local"
+                      name="startTime"
+                      value={formData.startTime}
+                      onChange={handleInputChange}
+                      className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none pr-10"
+                    />
+                    <ValidCheck isValid={isDateValid} />
+                  </div>
+                  <div className="relative">
+                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">End Time</label>
+                    <input
+                      type="datetime-local"
+                      name="endTime"
+                      value={formData.endTime}
+                      onChange={handleInputChange}
+                      className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none pr-10"
+                    />
+                    <ValidCheck isValid={isEndTimeValid} />
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Location</label>
+                  <input
+                    type="text"
+                    name="location"
+                    value={formData.location}
+                    onChange={handleInputChange}
+                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none pr-10"
+                    placeholder="e.g., Main Quad"
+                  />
+                  <ValidCheck isValid={isLocValid} />
+                </div>
+
+                <div className="relative">
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Department/Organization</label>
+                  <input
+                    type="text"
+                    name="department"
+                    value={formData.department}
+                    onChange={handleInputChange}
+                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none pr-10"
+                    placeholder="e.g., Student Union"
+                  />
+                  <ValidCheck isValid={isDeptValid} />
+                </div>
+
+                <div className="flex justify-between pt-4">
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => paginate(-1)}
+                    className="flex items-center gap-2 px-6 py-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4" /> Back
+                  </motion.button>
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => paginate(1)}
+                    disabled={!isStep2Valid}
+                    className="flex items-center gap-2 px-6 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Next Step <ArrowRight className="w-4 h-4" />
+                  </motion.button>
+                </div>
+              </motion.div>
+            )}
+
+            {/* ── STEP 3 ── */}
+            {step === 3 && (
+              <motion.div 
+                key="step3"
+                custom={direction}
+                variants={prefersReducedMotion ? {} : slideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                className="space-y-6"
+              >
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Category</label>
+                    <select
+                      name="category"
+                      value={formData.category}
+                      onChange={handleInputChange}
+                      className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none"
+                    >
+                      <option value="Social">Social</option>
+                      <option value="Academic">Academic</option>
+                      <option value="Sports">Sports</option>
+                      <option value="Arts">Arts</option>
+                      <option value="Club">Club</option>
+                    </select>
+                  </div>
+                  <div className="relative">
+                    <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Capacity</label>
+                    <input
+                      type="number"
+                      name="capacity"
+                      value={formData.capacity}
+                      onChange={handleInputChange}
+                      min="1"
+                      className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none pr-10"
+                    />
+                    <ValidCheck isValid={isCapValid} />
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Poster Image URL</label>
+                  <input
+                    type="url"
+                    name="posterUrl"
+                    value={formData.posterUrl}
+                    onChange={handleInputChange}
+                    className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none pr-10"
+                    placeholder="https://..."
+                  />
+                  <ValidCheck isValid={isPosterValid} />
+                </div>
+
+                <div className="pt-4 border-t border-gray-100 dark:border-gray-800 space-y-4">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={saveAsTemplate}
+                      onChange={(e) => setSaveAsTemplate(e.target.checked)}
+                      className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    <span className="font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2"><Save className="w-4 h-4" /> Save as Template</span>
+                  </label>
+                  
+                  <AnimatePresence>
+                    {saveAsTemplate && (
+                      <motion.input
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        type="text"
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        placeholder="Template Name (e.g., Weekly Seminar)"
+                        className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none"
+                      />
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                <div className="flex justify-between pt-4">
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => paginate(-1)}
+                    className="flex items-center gap-2 px-6 py-3 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <ArrowLeft className="w-4 h-4" /> Back
+                  </motion.button>
+                  <motion.button
+                    type="submit"
+                    whileTap={{ scale: 0.95 }}
+                    disabled={!isStep3Valid || (saveAsTemplate && !templateName.trim())}
+                    className="flex items-center gap-2 px-6 py-3 bg-primary text-white font-bold rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20"
+                  >
+                    Create Event <Check className="w-4 h-4" />
+                  </motion.button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </form>
+        )}
+      </div>
+    </DashboardLayout>
   );
 }
 ```
