@@ -12,9 +12,10 @@ import SkeletonLoader from "./SkeletonLoader";
 import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
 import { toast } from "react-hot-toast";
+import { useStudentDashboard } from "../hooks/useDashboardData";
 
 export default function StudentDashboard() {
-  const { events, registrations, announcements, feedbacks, addFeedback, getMyVolunteeringEvents, isLoading, error } = useData();
+  const { events, feedbacks, addFeedback, getMyVolunteeringEvents, isLoading, error } = useData();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"upcoming" | "past" | "waitlist">("upcoming");
   const [feedbackState, setFeedbackState] = useState<{ [eventId: string]: { rating: number, comment: string } }>({});
@@ -24,43 +25,16 @@ export default function StudentDashboard() {
     getMyVolunteeringEvents().then(setVolunteeringEventIds).catch(console.error);
   }, [getMyVolunteeringEvents]);
 
+  const {
+    upcomingEvents,
+    pastEvents,
+    waitlistedEvents,
+    volunteeringEvents,
+    recommendedEvents,
+    relevantAnnouncements
+  } = useStudentDashboard(volunteeringEventIds);
+
   if (!user) return null;
-
-  const userRegs = registrations.filter(r => r.studentId === user?.id);
-  
-  const now = new Date().getTime();
-  
-  const upcomingEvents = userRegs
-    .filter(r => r.status === "registered")
-    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
-    .filter(item => item.event && new Date(item.event.endTime).getTime() > now)
-    .sort((a, b) => new Date(a.event!.startTime).getTime() - new Date(b.event!.startTime).getTime());
-
-  const pastEvents = userRegs
-    .filter(r => r.status === "registered")
-    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
-    .filter(item => item.event && new Date(item.event.endTime).getTime() <= now)
-    .sort((a, b) => new Date(b.event!.startTime).getTime() - new Date(a.event!.startTime).getTime());
-
-  const waitlistedEvents = userRegs
-    .filter(r => r.status === "waitlisted")
-    .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
-    .filter(item => item.event);
-
-  const volunteeringEvents = events.filter(e => volunteeringEventIds.includes(e.id)).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-
-  const userCategories = new Set([...upcomingEvents, ...pastEvents].map(item => item.event?.category));
-  const recommendedEvents = events
-    .filter(e => new Date(e.endTime).getTime() > now)
-    .filter(e => !userRegs.some(r => r.eventId === e.id) && !volunteeringEventIds.includes(e.id))
-    .filter(e => userCategories.size === 0 || userCategories.has(e.category))
-    .slice(0, 3);
-
-  const upcomingEventIds = upcomingEvents.map(u => u.event!.id);
-  const relevantAnnouncements = announcements
-    .filter(a => upcomingEventIds.includes(a.eventId))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 3);
 
   const handleFeedbackSubmit = async (eventId: string) => {
     const data = feedbackState[eventId];
@@ -301,7 +275,7 @@ export default function StudentDashboard() {
               {volunteeringEvents.map(event => (
                 <Link 
                   key={`vol-${event.id}`}
-                  to={`/checkin/${event.id}`}
+                  to={`/organizer/checkin/${event.id}`}
                   className="bg-white dark:bg-surface-dark p-4 rounded-2xl border border-purple-100 dark:border-purple-900/30 hover:border-purple-300 dark:hover:border-purple-500/50 hover:shadow-md transition-all flex items-center gap-4 group"
                 >
                   <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-gray-100 dark:bg-gray-800">

@@ -76,7 +76,7 @@ export default function App() {
                     {/* Shared protected routes */}
                     <Route element={<ProtectedRoute />}>
                       <Route path="/settings" element={<ProfileSettings />} />
-                      <Route path="/checkin/:eventId" element={<OrganizerCheckinPage />} />
+                      <Route path="/organizer/checkin/:eventId" element={<OrganizerCheckinPage />} />
                     </Route>
 
                     <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>

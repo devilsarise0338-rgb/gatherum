@@ -9,10 +9,11 @@ import { CheckCircle, AlertTriangle, ArrowLeft, Search, User, QrCode } from "luc
 import { motion, AnimatePresence } from "motion/react";
 import SkeletonLoader from "./SkeletonLoader";
 import ErrorState from "./ErrorState";
+import EmptyState from "./EmptyState";
 
 export default function OrganizerCheckinPage() {
   const { eventId } = useParams<{ eventId: string }>();
-  const { events, checkInUser } = useData();
+  const { events, checkInUser, getMyVolunteeringEvents } = useData();
   const { user } = useAuth();
   
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string; name?: string; duplicate?: boolean } | null>(null);
@@ -21,6 +22,15 @@ export default function OrganizerCheckinPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
+  const [volunteeringEventIds, setVolunteeringEventIds] = useState<string[]>([]);
+  const [volunteeringLoaded, setVolunteeringLoaded] = useState(false);
+
+  useEffect(() => {
+    getMyVolunteeringEvents()
+      .then(setVolunteeringEventIds)
+      .catch(console.error)
+      .finally(() => setVolunteeringLoaded(true));
+  }, [getMyVolunteeringEvents]);
 
   useEffect(() => {
     if (eventId) {
@@ -132,6 +142,39 @@ export default function OrganizerCheckinPage() {
 
   const attendedCount = registrations.filter(r => r.attended).length;
   const totalCount = registrations.filter(r => r.status !== 'cancelled').length;
+
+  if (!eventId) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pt-24 px-6 pb-12 flex flex-col items-center justify-center">
+        <div className="w-full max-w-lg">
+          <EmptyState 
+            icon={<AlertTriangle className="w-8 h-8" />}
+            title="No Event Selected"
+            description="Please select an event from your dashboard to start checking in attendees."
+            actionText="Go to Dashboard"
+            actionHref="/organizer"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const event = events.find(e => e.id === eventId);
+  const hasAccess = user?.role === 'admin' || event?.organizerId === user?.id || volunteeringEventIds.includes(eventId);
+
+  if (!loading && volunteeringLoaded && !hasAccess) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 pt-24 px-6 pb-12 flex flex-col items-center justify-center">
+        <div className="w-full max-w-lg">
+          <ErrorState 
+            title="Access Denied" 
+            message="You do not have permission to check in attendees for this event."
+            onRetry={() => window.history.back()}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[100] bg-bg-light dark:bg-bg-dark text-gray-900 dark:text-white flex flex-col overflow-y-auto">

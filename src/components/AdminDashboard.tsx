@@ -6,10 +6,12 @@ import { useAuth, User, Role } from "../contexts/AuthContext";
 import { supabase } from "../lib/supabase";
 import SkeletonLoader from "./SkeletonLoader";
 import ErrorState from "./ErrorState";
+import { useAdminStats } from "../hooks/useDashboardData";
 
 export default function AdminDashboard() {
   const { events, deleteEvent, unpublishEvent, isLoading, error } = useData();
   const { users, settings, updateUserRole, toggleUserBan, updateSettings, user: currentUser } = useAuth();
+  const { totalEvents, totalUsers } = useAdminStats();
   
   const [activeTab, setActiveTab] = useState<"events" | "users" | "settings">("events");
 
@@ -103,7 +105,7 @@ export default function AdminDashboard() {
           <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm">
             <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
               <h2 className="text-xl font-bold">Global Event Moderation</h2>
-              <span className="text-sm font-medium text-gray-500">{events.length} Events Total</span>
+              <span className="text-sm font-medium text-gray-500">{totalEvents} Events Total</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">
@@ -171,7 +173,7 @@ export default function AdminDashboard() {
           <section className="bg-white dark:bg-surface-dark rounded-3xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm">
             <div className="p-6 border-b border-gray-100 dark:border-gray-800 flex justify-between items-center">
               <h2 className="text-xl font-bold">User Management</h2>
-              <span className="text-sm font-medium text-gray-500">{users.length} Registered Users</span>
+              <span className="text-sm font-medium text-gray-500">{totalUsers} Registered Users</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left">

@@ -303,17 +303,6 @@ FOR EACH ROW EXECUTE FUNCTION handle_new_user();
 
 -- Wait, the trigger should probably be BEFORE INSERT for the validation part to reject it early! But `auth.users` trigger must be AFTER INSERT in Supabase otherwise it might not persist the profile properly. Or we can have a BEFORE INSERT on `auth.users` (which is in the auth schema, but we can attach a trigger to it). Actually, `auth.users` allows BEFORE INSERT triggers, but it's safer to just let the AFTER INSERT fail the transaction, which rolls back the user creation anyway.
 
--- admin_fetch_users
-CREATE OR REPLACE FUNCTION admin_fetch_users()
-RETURNS TABLE (id uuid, email text, role role_enum, is_banned boolean, full_name text) AS $$
-BEGIN
-  IF (SELECT p.role FROM profiles p WHERE p.id = (select auth.uid())) != 'admin' THEN
-    RAISE EXCEPTION 'Unauthorized';
-  END IF;
-  RETURN QUERY SELECT p.id, p.email, p.role, p.is_banned, p.full_name FROM profiles p;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
-
 -- admin_update_user_role
 CREATE OR REPLACE FUNCTION admin_update_user_role(p_user_id uuid, p_role role_enum)
 RETURNS void AS $$
@@ -476,7 +465,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- REVOKE ALL + TARGETED GRANT
 REVOKE ALL ON FUNCTION handle_new_user() FROM PUBLIC;
-REVOKE ALL ON FUNCTION admin_fetch_users() FROM PUBLIC;
+
 REVOKE ALL ON FUNCTION admin_update_user_role(uuid, role_enum) FROM PUBLIC;
 REVOKE ALL ON FUNCTION admin_toggle_user_ban(uuid, boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION admin_update_settings(boolean, text, boolean) FROM PUBLIC;
@@ -488,7 +477,7 @@ REVOKE ALL ON FUNCTION remove_volunteer(uuid, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION trigger_set_updated_at() FROM PUBLIC;
 REVOKE ALL ON FUNCTION prevent_restricted_profile_updates() FROM PUBLIC;
 
-GRANT EXECUTE ON FUNCTION admin_fetch_users() TO authenticated;
+
 GRANT EXECUTE ON FUNCTION admin_update_user_role(uuid, role_enum) TO authenticated;
 GRANT EXECUTE ON FUNCTION admin_toggle_user_ban(uuid, boolean) TO authenticated;
 GRANT EXECUTE ON FUNCTION admin_update_settings(boolean, text, boolean) TO authenticated;
@@ -705,7 +694,7 @@ GRANT EXECUTE ON FUNCTION is_event_organizer(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION is_event_team_member(uuid) TO authenticated;
 
 -- Ignore authenticated executable warnings for intended RPCs and helpers
-COMMENT ON FUNCTION admin_fetch_users() IS 'supabase-lint-ignore: authenticated_security_definer_function_executable';
+
 COMMENT ON FUNCTION admin_update_user_role(uuid, role_enum) IS 'supabase-lint-ignore: authenticated_security_definer_function_executable';
 COMMENT ON FUNCTION admin_toggle_user_ban(uuid, boolean) IS 'supabase-lint-ignore: authenticated_security_definer_function_executable';
 COMMENT ON FUNCTION admin_update_settings(boolean, text, boolean) IS 'supabase-lint-ignore: authenticated_security_definer_function_executable';
