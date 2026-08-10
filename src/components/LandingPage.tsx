@@ -17,7 +17,7 @@ export default function LandingPage() {
   const now = new Date().getTime();
   const upcomingEvents = events
     .filter(e => !e.isUnpublished && new Date(e.endTime).getTime() > now)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
     .slice(0, 3);
 
   const staggerContainer = {
@@ -121,7 +121,7 @@ export default function LandingPage() {
                       <h3 className="text-xl font-bold mb-2 text-gray-900 dark:text-white group-hover:text-primary transition-colors line-clamp-1">{event.title}</h3>
                       <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
                         <Calendar className="w-4 h-4 text-primary" />
-                        <span className="font-medium">{new Date(event.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} • {new Date(event.date).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
+                        <span className="font-medium">{new Date(event.startTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} • {new Date(event.startTime).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
                       </div>
                       <p className="text-gray-600 dark:text-gray-300 text-sm mb-6 line-clamp-2">{event.description}</p>
                       

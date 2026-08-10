@@ -10,6 +10,8 @@ import SkeletonLoader from "./SkeletonLoader";
 import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
 import { useAccessibleMotion } from "../hooks/useAccessibleMotion";
+import { supabase } from "../lib/supabase";
+import { EventService } from "../services/api";
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -31,7 +33,55 @@ export default function EventDetailPage() {
     };
   }, []);
 
-  const event = events.find(e => e.id === id);
+  const contextEvent = events.find(e => e.id === id);
+  const [liveEvent, setLiveEvent] = useState(contextEvent);
+
+  useEffect(() => {
+    setLiveEvent(contextEvent);
+  }, [contextEvent]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase
+      .channel(`event:${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'events',
+          filter: `id=eq.${id}`
+        },
+        (payload) => {
+          setLiveEvent(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              registeredCount: payload.new.registered_count ?? prev.registeredCount,
+              waitlistCount: payload.new.waitlist_count ?? prev.waitlistCount,
+              capacity: payload.new.capacity ?? prev.capacity
+            };
+          });
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          // Sync state just in case we missed updates during connection
+          EventService.getEventById(id).then(updated => {
+            if (updated) setLiveEvent(updated);
+          });
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          // Reconnect logic handles refetching when it resubscribes
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
+  const event = liveEvent;
 
   useEffect(() => {
     if (event) {
@@ -224,9 +274,9 @@ export default function EventDetailPage() {
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900 dark:text-white">
-                      {new Date(event.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                      {new Date(event.startTime).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
                     </p>
-                    <p>{new Date(event.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {new Date(event.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
+                    <p>{new Date(event.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {new Date(event.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</p>
                   </div>
                 </motion.div>
                 
@@ -421,7 +471,7 @@ export default function EventDetailPage() {
                 <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                   <Clock className="w-4 h-4" aria-hidden="true" />
                   <span>
-                    {new Date(conflictEvent.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
+                    {new Date(conflictEvent.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - 
                     {new Date(conflictEvent.endTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                   </span>
                 </div>

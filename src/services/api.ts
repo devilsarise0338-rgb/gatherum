@@ -11,18 +11,42 @@ export const EventService = {
       id: d.id,
       title: d.title,
       description: d.description,
-      date: d.date,
+      startTime: d.start_time,
       endTime: d.end_time,
       location: d.location,
       department: d.department,
       category: d.category,
       capacity: d.capacity,
-      registeredCount: 0, // We will calculate this via a view or separate query in a real app, or compute it. Let's fetch registration counts below.
-      waitlistCount: 0,
+      registeredCount: d.registered_count || 0,
+      waitlistCount: d.waitlist_count || 0,
       posterUrl: d.poster_url,
       isUnpublished: d.is_unpublished,
       organizerId: d.organizer_id
     })) as CampusEvent[];
+  },
+
+  getEventById: async (eventId: string): Promise<CampusEvent | null> => {
+    const { data, error } = await supabase.from('events').select('id, title, description, start_time, end_time, location, department, category, capacity, registered_count, waitlist_count, poster_url, is_unpublished, organizer_id').eq('id', eventId).single();
+    if (error) {
+      if (error.code === 'PGRST116') return null; // Not found
+      throw error;
+    }
+    return {
+      id: data.id,
+      title: data.title,
+      description: data.description,
+      startTime: data.start_time,
+      endTime: data.end_time,
+      location: data.location,
+      department: data.department,
+      category: data.category,
+      capacity: data.capacity,
+      registeredCount: data.registered_count || 0,
+      waitlistCount: data.waitlist_count || 0,
+      posterUrl: data.poster_url,
+      isUnpublished: data.is_unpublished,
+      organizerId: data.organizer_id
+    } as CampusEvent;
   },
 
   createEvent: async (eventData: Omit<CampusEvent, "id" | "registeredCount" | "waitlistCount">): Promise<string> => {
@@ -32,7 +56,7 @@ export const EventService = {
     const payload = {
       title: eventData.title,
       description: eventData.description,
-      date: eventData.date,
+      start_time: eventData.startTime,
       end_time: eventData.endTime,
       location: eventData.location,
       department: eventData.department,
@@ -46,6 +70,30 @@ export const EventService = {
     const { data, error } = await supabase.from('events').insert(payload).select('id').single();
     if (error) throw error;
     return data.id;
+  },
+
+  getRegistrationsByEventId: async (eventId: string): Promise<Registration[]> => {
+    const { data, error } = await supabase.from('registrations').select(`
+      id,
+      event_id,
+      student_id,
+      status,
+      waitlist_position,
+      ticket_id,
+      attended,
+      profiles:student_id(email)
+    `).eq('event_id', eventId);
+    if (error) throw error;
+    return data.map((d: any) => ({
+      id: d.id,
+      eventId: d.event_id,
+      studentId: d.student_id,
+      studentEmail: d.profiles?.email,
+      status: d.status,
+      waitlistPosition: d.waitlist_position,
+      ticketId: d.ticket_id,
+      attended: d.attended
+    })) as Registration[];
   },
 
   deleteEvent: async (eventId: string): Promise<void> => {
@@ -115,7 +163,7 @@ export const RegistrationService = {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return;
     const { error } = await supabase.from('registrations')
-      .delete()
+      .update({ status: 'cancelled' })
       .eq('event_id', eventId)
       .eq('student_id', userData.user.id);
     if (error) throw error;

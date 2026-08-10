@@ -68,7 +68,7 @@ export default function PublicOrganizerPage() {
     ];
     
     organizerEvents.forEach(event => {
-      const start = new Date(event.date).toISOString().replace(/[-:]/g, '').split('.')[0] + "Z";
+      const start = new Date(event.startTime).toISOString().replace(/[-:]/g, '').split('.')[0] + "Z";
       const end = new Date(event.endTime).toISOString().replace(/[-:]/g, '').split('.')[0] + "Z";
       
       lines.push("BEGIN:VEVENT");
@@ -192,7 +192,7 @@ export default function PublicOrganizerPage() {
                               <div className="space-y-1 mb-4">
                                 <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
                                   <Calendar className="w-4 h-4" />
-                                  {new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                  {new Date(event.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                 </p>
                                 <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2 line-clamp-1">
                                   <MapPin className="w-4 h-4" />

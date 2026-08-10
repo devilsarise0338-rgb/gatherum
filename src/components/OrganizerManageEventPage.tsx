@@ -9,6 +9,9 @@ import SkeletonLoader from "./SkeletonLoader";
 import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
 
+import { supabase } from "../lib/supabase";
+import { RegistrationService } from "../services/api";
+
 export default function OrganizerManageEventPage() {
   const { id } = useParams<{ id: string }>();
   const { events, registrations, removeRegistrant, announcements, addAnnouncement, feedbacks, getVolunteers, inviteVolunteer, removeVolunteer, isLoading, error } = useData();
@@ -77,14 +80,67 @@ export default function OrganizerManageEventPage() {
     );
   }
 
-  const eventRegs = registrations.filter(r => r.eventId === event.id);
+  const eventRegsContext = registrations.filter(r => r.eventId === event.id);
   const eventAnnouncements = announcements.filter(a => a.eventId === event.id).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   const eventFeedbacks = feedbacks.filter(f => f.eventId === event.id);
 
+  const [liveRegs, setLiveRegs] = useState(eventRegsContext);
+  useEffect(() => {
+    setLiveRegs(eventRegsContext);
+  }, [eventRegsContext]);
+
+  useEffect(() => {
+    if (!id) return;
+    const channel = supabase
+      .channel(`registrations:${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'registrations',
+          filter: `event_id=eq.${id}`
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setLiveRegs(prev => [...prev, {
+              id: payload.new.id,
+              eventId: payload.new.event_id,
+              studentId: payload.new.student_id,
+              status: payload.new.status,
+              waitlistPosition: payload.new.waitlist_position,
+              ticketId: payload.new.ticket_id,
+              attended: payload.new.attended
+            }]);
+            RegistrationService.getRegistrationsForOrganizer(id).then(regs => {
+              setLiveRegs(regs);
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            setLiveRegs(prev => prev.map(r => r.id === payload.new.id ? {
+              ...r,
+              status: payload.new.status,
+              waitlistPosition: payload.new.waitlist_position,
+              attended: payload.new.attended
+            } : r));
+          } else if (payload.eventType === 'DELETE') {
+            setLiveRegs(prev => prev.filter(r => r.id !== payload.old.id));
+          }
+        }
+      )
+      .subscribe((status) => {
+         if (status === 'SUBSCRIBED') {
+            RegistrationService.getRegistrationsForOrganizer(id).then(regs => {
+                setLiveRegs(regs);
+            });
+         }
+      });
+    return () => { supabase.removeChannel(channel); };
+  }, [id]);
+
   // Data Grid Logic
   const filteredRegs = useMemo(() => {
-    return eventRegs.filter(r => (r.studentEmail || "").toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [eventRegs, searchQuery]);
+    return liveRegs.filter(r => (r.studentEmail || "").toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [liveRegs, searchQuery]);
 
   const sortedRegs = useMemo(() => {
     return [...filteredRegs].sort((a, b) => {
@@ -166,8 +222,8 @@ export default function OrganizerManageEventPage() {
 
   // Analytics Data
   const attendanceData = [
-    { name: "Attended", value: eventRegs.filter(r => r.attended).length },
-    { name: "No Show", value: eventRegs.length - eventRegs.filter(r => r.attended).length }
+    { name: "Attended", value: liveRegs.filter(r => r.attended).length },
+    { name: "No Show", value: liveRegs.length - liveRegs.filter(r => r.attended).length }
   ];
   const COLORS = ["#10b981", "#ef4444"];
 
@@ -197,7 +253,7 @@ export default function OrganizerManageEventPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{event.title}</h1>
-              <p className="text-gray-500 dark:text-gray-400">Manage registrants, view analytics, and broadcast announcements.</p>
+              <p className="text-gray-600 dark:text-gray-400">Total Registered: {liveRegs.length}</p>
             </div>
             <Link to={`/events/${event.id}`} target="_blank" className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
               View Public Page
@@ -321,7 +377,7 @@ export default function OrganizerManageEventPage() {
             <div className="bg-white dark:bg-surface-dark p-6 rounded-3xl border border-gray-100 dark:border-gray-800 shadow-sm">
               <h3 className="font-bold mb-4">Attendance Rate</h3>
               <div className="h-64 flex items-center justify-center">
-                {eventRegs.length > 0 ? (
+                {liveRegs.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie data={attendanceData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value" isAnimationActive={true} animationDuration={1500} animationEasing="ease-out">

@@ -33,19 +33,19 @@ export default function StudentDashboard() {
     .filter(r => r.status === "registered")
     .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
     .filter(item => item.event && new Date(item.event.endTime).getTime() > now)
-    .sort((a, b) => new Date(a.event!.date).getTime() - new Date(b.event!.date).getTime());
+    .sort((a, b) => new Date(a.event!.startTime).getTime() - new Date(b.event!.startTime).getTime());
 
   const pastEvents = userRegs
     .filter(r => r.status === "registered")
     .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
     .filter(item => item.event && new Date(item.event.endTime).getTime() <= now)
-    .sort((a, b) => new Date(b.event!.date).getTime() - new Date(a.event!.date).getTime());
+    .sort((a, b) => new Date(b.event!.startTime).getTime() - new Date(a.event!.startTime).getTime());
 
   const waitlistedEvents = userRegs
     .filter(r => r.status === "waitlisted")
     .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }));
 
-  const volunteeringEvents = events.filter(e => volunteeringEventIds.includes(e.id)).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const volunteeringEvents = events.filter(e => volunteeringEventIds.includes(e.id)).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
   const userCategories = new Set([...upcomingEvents, ...pastEvents].map(item => item.event?.category));
   const recommendedEvents = events
@@ -136,7 +136,7 @@ export default function StudentDashboard() {
                   <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
                     <span className="flex items-center gap-1">
                       <Calendar className="w-4 h-4" aria-hidden="true" />
-                      {new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      {new Date(event.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
                     <span className="flex items-center gap-1 hidden md:flex truncate">
                       <Clock className="w-4 h-4" aria-hidden="true" />
@@ -305,7 +305,7 @@ export default function StudentDashboard() {
                     <h4 className="font-bold text-gray-900 dark:text-white truncate">{event.title}</h4>
                     <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
                       <Calendar className="w-4 h-4" />
-                      {new Date(event.date).toLocaleDateString()}
+                      {new Date(event.startTime).toLocaleDateString()}
                     </p>
                   </div>
                   <div className="shrink-0 p-2 text-purple-600 bg-purple-50 dark:bg-purple-900/20 rounded-xl">
@@ -399,7 +399,7 @@ export default function StudentDashboard() {
                           <h4 className="font-bold text-gray-900 dark:text-white mb-2 line-clamp-1 group-hover:text-primary transition-colors">{event.title}</h4>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-1">
                             <Calendar className="w-3 h-3" aria-hidden="true" />
-                            {new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            {new Date(event.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                           </p>
                         </div>
                         <span className="text-sm font-semibold text-primary">View Details</span>

@@ -20,7 +20,7 @@ export default function StudentTicketsPage() {
     .filter(r => r.studentId === user?.id && r.status === "registered")
     .map(r => ({ reg: r, event: events.find(e => e.id === r.eventId) }))
     .filter(item => item.event)
-    .sort((a, b) => new Date(b.event!.date).getTime() - new Date(a.event!.date).getTime());
+    .sort((a, b) => new Date(b.event!.startTime).getTime() - new Date(a.event!.startTime).getTime());
 
   const generateICS = (event: any) => {
     const formatDate = (dateString: string) => {
@@ -32,7 +32,7 @@ export default function StudentTicketsPage() {
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
       'BEGIN:VEVENT',
-      `DTSTART:${formatDate(event.date)}`,
+      `DTSTART:${formatDate(event.startTime)}`,
       `DTEND:${formatDate(event.endTime)}`,
       `SUMMARY:${event.title}`,
       `DESCRIPTION:${event.description}`,
@@ -118,11 +118,11 @@ export default function StudentTicketsPage() {
                   <div className="w-full space-y-3 mb-6">
                     <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
                       <Calendar className="w-4 h-4 text-primary" aria-hidden="true" />
-                      <span>{new Date(event!.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
+                      <span>{new Date(event!.startTime).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
                     </div>
                     <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
                       <Clock className="w-4 h-4 text-accent" aria-hidden="true" />
-                      <span>{new Date(event!.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
+                      <span>{new Date(event!.startTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
                     </div>
                     <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
                       <MapPin className="w-4 h-4 text-gray-400" aria-hidden="true" />

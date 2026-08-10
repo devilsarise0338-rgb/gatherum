@@ -120,7 +120,7 @@ export default function AdminDashboard() {
                     <tr key={event.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
                       <td className="px-6 py-4">
                         <div className="font-bold text-gray-900 dark:text-white truncate max-w-xs">{event.title}</div>
-                        <div className="text-xs text-gray-500">{new Date(event.date).toLocaleDateString()}</div>
+                        <div className="text-xs text-gray-500">{new Date(event.startTime).toLocaleDateString()}</div>
                       </td>
                       <td className="px-6 py-4 text-gray-600 dark:text-gray-300">{event.department}</td>
                       <td className="px-6 py-4">

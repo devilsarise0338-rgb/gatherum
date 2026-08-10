@@ -122,7 +122,7 @@ export default function EventsPage() {
                         <div className="space-y-2 mb-4">
                           <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                             <Calendar className="w-4 h-4 text-primary" aria-hidden="true" />
-                            <span>{new Date(event.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                            <span>{new Date(event.startTime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
                           </div>
                           <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                             <MapPin className="w-4 h-4 text-accent" aria-hidden="true" />

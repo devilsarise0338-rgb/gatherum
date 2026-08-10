@@ -102,7 +102,7 @@ export default function OrganizerDashboard() {
                       <img src={event.posterUrl} alt={event.title} className="w-16 h-16 object-cover rounded-xl" />
                       <div>
                         <h3 className="font-bold text-gray-900 dark:text-white line-clamp-1">{event.title}</h3>
-                        <p className="text-sm text-gray-500">{new Date(event.date).toLocaleDateString()}</p>
+                        <p className="text-sm text-gray-500">{new Date(event.startTime).toLocaleDateString()}</p>
                       </div>
                     </div>
                     <Link to={`/organizer/events/${event.id}`} className="p-2 text-gray-400 hover:text-primary transition-colors bg-gray-100 dark:bg-gray-800 rounded-lg hover:bg-primary/10">

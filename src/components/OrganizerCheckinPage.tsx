@@ -4,6 +4,7 @@ import { Scanner } from "@yudiel/react-qr-scanner";
 import { useData, Registration } from "../contexts/DataContext";
 import { useAuth } from "../contexts/AuthContext";
 import { RegistrationService } from "../services/api";
+import { supabase } from "../lib/supabase";
 import { CheckCircle, AlertTriangle, ArrowLeft, Search, User, QrCode } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import SkeletonLoader from "./SkeletonLoader";
@@ -33,6 +34,51 @@ export default function OrganizerCheckinPage() {
           setError(true);
           setLoading(false);
         });
+
+      const channel = supabase
+        .channel(`registrations_checkin:${eventId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'registrations',
+            filter: `event_id=eq.${eventId}`
+          },
+          (payload) => {
+            if (payload.eventType === 'INSERT') {
+              setRegistrations(prev => [...prev, {
+                id: payload.new.id,
+                eventId: payload.new.event_id,
+                studentId: payload.new.student_id,
+                status: payload.new.status,
+                waitlistPosition: payload.new.waitlist_position,
+                ticketId: payload.new.ticket_id,
+                attended: payload.new.attended
+              }]);
+              // Refresh to get joined data like email
+              RegistrationService.getRegistrationsForOrganizer(eventId).then(setRegistrations);
+            } else if (payload.eventType === 'UPDATE') {
+              setRegistrations(prev => prev.map(r => r.id === payload.new.id ? {
+                ...r,
+                status: payload.new.status,
+                waitlistPosition: payload.new.waitlist_position,
+                attended: payload.new.attended
+              } : r));
+            } else if (payload.eventType === 'DELETE') {
+              setRegistrations(prev => prev.filter(r => r.id !== payload.old.id));
+            }
+          }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            RegistrationService.getRegistrationsForOrganizer(eventId).then(setRegistrations);
+          }
+        });
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [eventId]);
   // We'll search across all registrations.

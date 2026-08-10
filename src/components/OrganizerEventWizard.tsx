@@ -53,7 +53,7 @@ export default function OrganizerEventWizard() {
   const [formData, setFormData] = useState({
     title: "",
     description: "",
-    date: "",
+    startTime: "",
     endTime: "",
     location: "",
     department: "",
@@ -78,7 +78,7 @@ export default function OrganizerEventWizard() {
       setFormData({
         title: t.title,
         description: t.description,
-        date: "",
+        startTime: "",
         endTime: "",
         location: t.location,
         department: t.department,
@@ -99,7 +99,7 @@ export default function OrganizerEventWizard() {
   const isDescValid = formData.description.trim().length > 0;
   const isStep1Valid = isTitleValid && isDescValid;
 
-  const isDateValid = formData.date !== "";
+  const isDateValid = formData.startTime !== "";
   const isEndTimeValid = formData.endTime !== "";
   const isLocValid = formData.location.trim().length > 0;
   const isDeptValid = formData.department.trim().length > 0;
@@ -148,7 +148,7 @@ export default function OrganizerEventWizard() {
     
     const quickData = {
       ...formData,
-      date: formData.date || tomorrowStr,
+      startTime: formData.startTime || tomorrowStr,
       endTime: formData.endTime || tomorrowStr + "T14:00",
       location: formData.location || "TBA",
       department: formData.department || "General",
@@ -285,8 +285,8 @@ export default function OrganizerEventWizard() {
                     <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Start Time</label>
                     <input
                       type="datetime-local"
-                      name="date"
-                      value={formData.date}
+                      name="startTime"
+                      value={formData.startTime}
                       onChange={handleInputChange}
                       className="w-full p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-bg-dark focus:ring-2 focus:ring-primary outline-none pr-10"
                     />

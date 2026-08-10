@@ -15,7 +15,7 @@ export interface CampusEvent {
   id: string;
   title: string;
   description: string;
-  date: string;
+  startTime: string;
   endTime: string;
   location: string;
   department: string;
@@ -131,17 +131,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         UserCommunicationService.getFeedbacks()
       ]);
       
-      // Calculate dynamic counts for events
-      const enrichedEvents = evts.map(evt => {
-        const eventRegs = regs.filter(r => r.eventId === evt.id);
-        return {
-          ...evt,
-          registeredCount: eventRegs.filter(r => r.status === 'registered').length,
-          waitlistCount: eventRegs.filter(r => r.status === 'waitlisted').length
-        };
-      });
-
-      setEvents(enrichedEvents);
+      setEvents(evts);
       setRegistrations(regs);
       setTemplates(tmpls);
       setAnnouncements(anns);
@@ -170,9 +160,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const registeredEvent = events.find(e => e.id === reg.eventId);
       if (registeredEvent && registeredEvent.id !== eventId) {
         const parseDate = (d: string) => d.length === 10 ? new Date(d + 'T00:00:00').getTime() : new Date(d).getTime();
-        const tStart = parseDate(targetEvent.date);
+        const tStart = parseDate(targetEvent.startTime);
         const tEnd = parseDate(targetEvent.endTime);
-        const rStart = parseDate(registeredEvent.date);
+        const rStart = parseDate(registeredEvent.startTime);
         const rEnd = parseDate(registeredEvent.endTime);
         
         if (tStart < rEnd && tEnd > rStart) {
