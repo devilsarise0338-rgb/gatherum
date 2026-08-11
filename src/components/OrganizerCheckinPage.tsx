@@ -7,6 +7,7 @@ import { RegistrationService } from "../services/api";
 import { supabase } from "../lib/supabase";
 import { CheckCircle, AlertTriangle, ArrowLeft, Search, User, QrCode } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { successAnimation } from "../utils/motion";
 import SkeletonLoader from "./SkeletonLoader";
 import ErrorState from "./ErrorState";
 import EmptyState from "./EmptyState";
@@ -57,15 +58,8 @@ export default function OrganizerCheckinPage() {
           },
           (payload) => {
             if (payload.eventType === 'INSERT') {
-              setRegistrations(prev => [...prev, {
-                id: payload.new.id,
-                eventId: payload.new.event_id,
-                studentId: payload.new.user_id,
-                status: payload.new.status,
-                ticketId: payload.new.ticket_id,
-                attended: payload.new.attended
-              }]);
-              // Refresh to get joined data like email
+              // Go straight to the authoritative refetch — skip the partial optimistic push to avoid
+              // rendering a row with a missing studentEmail (which manual search filters on).
               RegistrationService.getRegistrationsForOrganizer(eventId).then(setRegistrations);
             } else if (payload.eventType === 'UPDATE') {
               setRegistrations(prev => prev.map(r => r.id === payload.new.id ? {
@@ -244,10 +238,10 @@ export default function OrganizerCheckinPage() {
         <AnimatePresence>
           {scanResult && (
             <motion.div 
-              initial={{ opacity: 0, y: 20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              transition={{ type: "spring", stiffness: 400, damping: 25 }}
+              variants={successAnimation}
+              initial="initial"
+              animate="animate"
+              exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.2 } }}
               className={`p-4 rounded-2xl shadow-lg border flex items-start gap-4 ${
                 scanResult.success 
                   ? "bg-green-100 border-green-200 dark:bg-green-900/30 dark:border-green-800" 

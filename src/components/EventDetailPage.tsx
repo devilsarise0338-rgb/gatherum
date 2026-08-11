@@ -5,7 +5,7 @@ import { useData } from "../contexts/DataContext";
 import { useAuth } from "../contexts/AuthContext";
 import { Calendar, MapPin, Users, ArrowLeft, Building, Clock, AlertTriangle, CheckCircle2, Loader2, Bell, BellRing } from "lucide-react";
 import toast from "react-hot-toast";
-import { pageTransition, successAnimation } from "../utils/motion";
+import { pageTransition, successAnimation, cinematicTransition, functionalTransition } from "../utils/motion";
 import SkeletonLoader from "./SkeletonLoader";
 import EmptyState from "./EmptyState";
 import ErrorState from "./ErrorState";
@@ -233,7 +233,7 @@ export default function EventDetailPage() {
         <motion.img 
           initial={{ scale: 1.1, opacity: 0 }}
           animate={{ scale: 1, opacity: 0.6 }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
+          transition={cinematicTransition}
           src={event.posterUrl} 
           alt={event.title} 
           className="w-full h-full object-cover" 
@@ -249,7 +249,7 @@ export default function EventDetailPage() {
       <motion.div 
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
+        transition={cinematicTransition}
         className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 -mt-24 relative z-10"
       >
         <div className="bg-white dark:bg-surface-dark rounded-3xl p-6 md:p-10 shadow-xl border border-gray-100 dark:border-gray-800">
@@ -267,7 +267,7 @@ export default function EventDetailPage() {
               <motion.div variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 mb-4 text-xs font-bold uppercase tracking-wider">
                 {event.category}
               </motion.div>
-              <motion.h1 variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4 leading-tight">{event.title}</motion.h1>
+              <motion.h1 variants={{ hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } }} className="text-[var(--text-display-medium)] leading-[var(--text-display-medium--line-height)] tracking-[var(--text-display-medium--letter-spacing)] font-[var(--text-display-medium--font-weight)] text-gray-900 dark:text-white mb-4">{event.title}</motion.h1>
               
               <div className="flex flex-col gap-3 text-gray-600 dark:text-gray-300 text-sm md:text-base">
                 <motion.div variants={{ hidden: { opacity: 0, x: -10 }, show: { opacity: 1, x: 0 } }} className="flex items-center gap-3">
@@ -335,11 +335,10 @@ export default function EventDetailPage() {
               </div>
             </motion.div>
 
-            {/* Registration Card */}
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
+              transition={functionalTransition}
               className="w-full md:w-80 bg-gray-50 dark:bg-bg-dark rounded-2xl p-6 border border-gray-200 dark:border-gray-700 shrink-0"
             >
               <h3 className="font-bold text-xl mb-4 border-b border-gray-200 dark:border-gray-700 pb-4">Registration</h3>

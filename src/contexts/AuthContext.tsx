@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .single();
     if (data) {
       setSettings({
-        allowGlobalSignups: data.allow_global_signups ?? true,
+        allowGlobalSignups: data.signups_enabled ?? true,
         allowedEmailDomain: data.allowed_email_domain ?? "",
         maintenanceMode: data.maintenance_mode ?? false,
       });

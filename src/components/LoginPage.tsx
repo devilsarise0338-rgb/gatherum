@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth, AuthError } from "../contexts/AuthContext";
 import { motion, AnimatePresence } from "motion/react";
+import { cinematicTransition } from "../utils/motion";
 
 // ─── Error messages ───────────────────────────────────────────────────────────
 const ERROR_MESSAGES: Record<AuthError, string> = {
@@ -133,7 +134,7 @@ export default function LoginPage() {
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
+        transition={cinematicTransition}
         className="w-full max-w-md z-10"
       >
         {/* Logo */}
@@ -148,8 +149,8 @@ export default function LoginPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" />
             </svg>
           </motion.div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Gatherum</h1>
-          <p className="text-gray-500 mt-1 text-sm">Your campus event hub</p>
+          <h1 className="text-[var(--text-display-medium)] leading-[var(--text-display-medium--line-height)] tracking-[var(--text-display-medium--letter-spacing)] font-[var(--text-display-medium--font-weight)] text-gray-900">Gatherum</h1>
+          <p className="text-[var(--text-body-relaxed)] text-gray-500 mt-1">Your campus event hub</p>
         </div>
 
         {/* Card */}

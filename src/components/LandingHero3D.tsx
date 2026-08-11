@@ -2,6 +2,7 @@ import { useRef, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Float, PointMaterial, Points } from '@react-three/drei';
 import * as THREE from 'three';
+import { useReducedMotion } from 'motion/react';
 
 function ParticleField() {
   const ref = useRef<THREE.Points>(null);
@@ -32,7 +33,7 @@ function ParticleField() {
     <Points ref={ref} positions={positions} stride={3} frustumCulled={false}>
       <PointMaterial
         transparent
-        color="#8B5CF6"
+        color="#FF5A5F"
         size={0.03}
         sizeAttenuation={true}
         depthWrite={false}
@@ -57,7 +58,7 @@ function FloatingShape() {
       <mesh ref={meshRef}>
         <icosahedronGeometry args={[2, 1]} />
         <meshStandardMaterial 
-          color="#8B5CF6" 
+          color="#FF5A5F" 
           wireframe 
           transparent
           opacity={0.2}
@@ -68,6 +69,10 @@ function FloatingShape() {
 }
 
 export default function LandingHero3D() {
+  const prefersReducedMotion = useReducedMotion();
+
+  if (prefersReducedMotion) return null;
+
   return (
     <div className="absolute inset-0 -z-10 opacity-60 dark:opacity-40">
       <Canvas camera={{ position: [0, 0, 8], fov: 60 }} dpr={[1, 2]}>

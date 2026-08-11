@@ -11,6 +11,19 @@
   
   --font-heading: 'Outfit', sans-serif;
   --font-body: 'Inter', sans-serif;
+
+  --text-display-large: clamp(3rem, 8vw, 6rem);
+  --text-display-large--line-height: 1;
+  --text-display-large--letter-spacing: -0.04em;
+  --text-display-large--font-weight: 800;
+
+  --text-display-medium: clamp(2.5rem, 5vw, 4rem);
+  --text-display-medium--line-height: 1.05;
+  --text-display-medium--letter-spacing: -0.02em;
+  --text-display-medium--font-weight: 700;
+
+  --text-body-relaxed: 1.125rem;
+  --text-body-relaxed--line-height: 1.7;
 }
 
 @layer base {

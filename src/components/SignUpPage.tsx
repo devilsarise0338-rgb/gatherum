@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth, AuthError } from "../contexts/AuthContext";
 import { motion, AnimatePresence } from "motion/react";
+import { cinematicTransition } from "../utils/motion";
 
 // ─── Error messages ───────────────────────────────────────────────────────────
 const ERROR_MESSAGES: Record<AuthError, string> = {
@@ -127,16 +128,17 @@ export default function SignUpPage() {
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={cinematicTransition}
           className="w-full max-w-md bg-white/70 backdrop-blur-2xl border border-white p-8 rounded-3xl shadow-xl relative overflow-hidden"
         >
           {/* Subtle top glare */}
           <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent" />
           
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-black tracking-tight text-gray-900">
+            <h1 className="text-[var(--text-display-medium)] leading-[var(--text-display-medium--line-height)] tracking-[var(--text-display-medium--letter-spacing)] font-[var(--text-display-medium--font-weight)] text-gray-900">
               Join Gatherum
             </h1>
-            <p className="text-gray-500 mt-2 text-sm leading-relaxed">
+            <p className="text-[var(--text-body-relaxed)] text-gray-500 mt-2 leading-relaxed">
               Create your account to discover and register for campus events.
             </p>
           </div>

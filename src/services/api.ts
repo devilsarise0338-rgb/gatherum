@@ -155,12 +155,7 @@ export const RegistrationService = {
   },
 
   cancelRegistration: async (eventId: string): Promise<void> => {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
-    const { error } = await supabase.from('registrations')
-      .update({ status: 'cancelled' })
-      .eq('event_id', eventId)
-      .eq('user_id', userData.user.id);
+    const { error } = await supabase.rpc('cancel_registration', { p_event_id: eventId });
     if (error) throw error;
   },
 
@@ -390,6 +385,7 @@ export const SocialService = {
       .eq('followed_organizer_id', organizerId);
     if (error) throw error;
   },
+
   getFollowedOrganizers: async (): Promise<string[]> => {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return [];

@@ -40,7 +40,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const currentNav = navItems[user.role] || [];
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] bg-bg-light dark:bg-bg-dark transition-colors">
+    <div className="flex min-h-[calc(100vh-4rem)] bg-bg-light dark:bg-bg-dark transition-colors relative z-0">
+      <div className="fixed inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent pointer-events-none" />
       {/* Sidebar */}
       <aside className="w-64 hidden md:flex flex-col bg-surface-light dark:bg-surface-dark border-r border-gray-200 dark:border-gray-800 p-6" aria-label="Sidebar navigation">
         <div className="mb-8 px-4" aria-live="polite">

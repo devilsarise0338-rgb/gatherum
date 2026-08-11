@@ -23,3 +23,14 @@ export const successAnimation: Variants = {
     } 
   }
 };
+
+export const cinematicEase = [0.22, 1, 0.36, 1] as const; 
+export const cinematicTransition = { duration: 0.7, ease: cinematicEase };
+export const functionalTransition = { duration: 0.2, ease: "easeOut" as const };
+
+export const scrollReveal = {
+  initial: { opacity: 0, y: 40 },
+  whileInView: { opacity: 1, y: 0, transition: cinematicTransition },
+  viewport: { once: true, margin: "-100px" }
+};
+

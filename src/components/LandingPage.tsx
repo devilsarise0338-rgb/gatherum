@@ -2,7 +2,7 @@ import { Calendar, Users, Zap } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "motion/react";
 import React, { Suspense } from "react";
-import { pageTransition } from "../utils/motion";
+import { pageTransition, scrollReveal, cinematicTransition } from "../utils/motion";
 import { useData } from "../contexts/DataContext";
 import SkeletonLoader from "./SkeletonLoader";
 import TiltCard from "./TiltCard";
@@ -32,7 +32,7 @@ export default function LandingPage() {
 
   const itemAnim = {
     hidden: { opacity: 0, y: shouldReduceMotion ? 0 : 30 },
-    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 24 } }
+    show: { opacity: 1, y: 0, transition: cinematicTransition }
   };
 
   return (
@@ -64,11 +64,11 @@ export default function LandingPage() {
             <span className="text-sm font-semibold tracking-wide uppercase">Your Campus, Live</span>
           </div>
           
-          <h1 className="max-w-4xl text-5xl md:text-7xl font-bold tracking-tight text-gray-900 dark:text-white mb-6 drop-shadow-sm">
+          <h1 className="max-w-5xl text-[var(--text-display-large)] leading-[var(--text-display-large--line-height)] tracking-[var(--text-display-large--letter-spacing)] font-[var(--text-display-large--font-weight)] text-gray-900 dark:text-white mb-6 drop-shadow-md">
             Experience <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-accent">College Events</span> Like Never Before
           </h1>
           
-          <p className="max-w-2xl text-lg md:text-xl text-gray-600 dark:text-gray-300 mb-10 leading-relaxed mx-auto drop-shadow-sm bg-white/50 dark:bg-black/50 p-4 rounded-2xl backdrop-blur-sm">
+          <p className="max-w-2xl text-[var(--text-body-relaxed)] leading-[var(--text-body-relaxed--line-height)] text-gray-600 dark:text-gray-300 mb-10 mx-auto drop-shadow-sm bg-white/50 dark:bg-black/50 p-6 rounded-2xl backdrop-blur-md">
             Gatherum brings all your university happenings into one vibrant platform. Discover parties, academic talks, and club meetups instantly.
           </p>
           
@@ -87,14 +87,11 @@ export default function LandingPage() {
       <section id="features" className="py-24 bg-white dark:bg-surface-dark transition-colors relative z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div 
-            initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: "-100px" }}
-            transition={{ duration: 0.5 }}
+            {...(shouldReduceMotion ? { initial: { opacity: 1 }, animate: { opacity: 1 } } : scrollReveal)}
             className="text-center mb-16"
           >
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 text-gray-900 dark:text-white">Trending on Campus</h2>
-            <p className="text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">Don't miss out on what everyone will be talking about tomorrow.</p>
+            <h2 className="text-[var(--text-display-medium)] leading-[var(--text-display-medium--line-height)] tracking-[var(--text-display-medium--letter-spacing)] font-[var(--text-display-medium--font-weight)] mb-4 text-gray-900 dark:text-white">Trending on Campus</h2>
+            <p className="text-[var(--text-body-relaxed)] text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">Don't miss out on what everyone will be talking about tomorrow.</p>
           </motion.div>
           
           <motion.div 

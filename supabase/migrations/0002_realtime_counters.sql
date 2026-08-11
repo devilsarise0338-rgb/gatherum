@@ -11,6 +11,9 @@ SET
   waitlist_count = (SELECT count(*) FROM registrations r WHERE r.event_id = e.id AND r.status = 'waitlisted');
 
 -- 3. Prevent client manipulation of counters
+-- NOTE: This check relies on maintain_event_counters being SECURITY DEFINER — its internal
+-- UPDATE runs as the function owner (postgres), which is what legitimately satisfies this guard.
+-- Do not remove SECURITY DEFINER from maintain_event_counters without revisiting this trigger.
 CREATE OR REPLACE FUNCTION protect_event_counters()
 RETURNS trigger AS $$
 BEGIN

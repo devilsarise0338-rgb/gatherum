@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { useData, EventCategory } from "../contexts/DataContext";
 import { useAuth } from "../contexts/AuthContext";
 import { Calendar, MapPin, Users, Search, AlertCircle } from "lucide-react";
-import { pageTransition } from "../utils/motion";
+import { pageTransition, cinematicTransition } from "../utils/motion";
 import TiltCard from "./TiltCard";
 import SkeletonLoader from "./SkeletonLoader";
 import EmptyState from "./EmptyState";
@@ -38,8 +38,8 @@ export default function EventsPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         <header className="mb-12">
-          <h1 className="text-4xl md:text-5xl font-bold text-gray-900 dark:text-white mb-4 tracking-tight">Discover Events</h1>
-          <p className="text-lg text-gray-500 dark:text-gray-400 max-w-2xl">Find out what's happening around campus. Register for events, join clubs, and make the most of your college experience.</p>
+          <h1 className="text-[var(--text-display-medium)] leading-[var(--text-display-medium--line-height)] tracking-[var(--text-display-medium--letter-spacing)] font-[var(--text-display-medium--font-weight)] text-gray-900 dark:text-white mb-4">Discover Events</h1>
+          <p className="text-[var(--text-body-relaxed)] text-gray-500 dark:text-gray-400 max-w-2xl">Find out what's happening around campus. Register for events, join clubs, and make the most of your college experience.</p>
         </header>
 
         {/* Filters and Search */}
@@ -98,13 +98,13 @@ export default function EventsPage() {
               animate="show"
               variants={{
                 hidden: { opacity: 0 },
-                show: { opacity: 1, transition: { staggerChildren: 0.1 } }
+                show: { opacity: 1, transition: { staggerChildren: 0.15 } }
               }}
               className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8" 
               role="list"
             >
               {filteredEvents.map((event) => (
-                <motion.div key={event.id} variants={{ hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } } }} role="listitem">
+                <motion.div key={event.id} variants={{ hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0, transition: cinematicTransition } }} role="listitem">
                   <TiltCard>
                     <Link 
                       to={`/events/${event.id}`}

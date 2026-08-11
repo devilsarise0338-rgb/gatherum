@@ -144,7 +144,7 @@ export default function PublicOrganizerPage() {
                 </div>
                 
                 <div className="flex-grow z-10">
-                  <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{department}</h1>
+                  <h1 className="text-[var(--text-display-medium)] leading-[var(--text-display-medium--line-height)] tracking-[var(--text-display-medium--letter-spacing)] font-[var(--text-display-medium--font-weight)] text-gray-900 dark:text-white mb-2">{department}</h1>
                   <p className="text-gray-500 mb-6">Organizer on Gatherum • {organizerEvents.length} upcoming events</p>
                   
                   <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
