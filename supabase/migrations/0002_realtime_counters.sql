@@ -51,6 +51,8 @@ BEGIN
     IF OLD.status = 'waitlisted' AND NEW.status = 'registered' THEN 
       v_wait_delta := -1; v_reg_delta := 1; 
     END IF;
+    IF OLD.status = 'cancelled' AND NEW.status = 'registered' THEN v_reg_delta := 1; END IF;
+    IF OLD.status = 'cancelled' AND NEW.status = 'waitlisted' THEN v_wait_delta := 1; END IF;
   ELSIF TG_OP = 'DELETE' THEN
     v_event_id := OLD.event_id;
     IF OLD.status = 'registered' THEN v_reg_delta := -1; END IF;

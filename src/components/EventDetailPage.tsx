@@ -189,8 +189,9 @@ export default function EventDetailPage() {
     try {
       await cancelRegistration(event.id);
       toast.success("Registration cancelled");
-    } catch (err) {
-      toast.error("Failed to cancel registration");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to cancel registration");
     }
   };
 
