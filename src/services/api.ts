@@ -347,7 +347,7 @@ export const EventTeamService = {
   getVolunteers: async (eventId: string): Promise<{userId: string; email: string}[]> => {
     const { data, error } = await supabase
       .from('event_team')
-      .select('user_id, profiles!inner(email)')
+      .select('user_id, profiles!event_team_user_id_fkey!inner(email)')
       .eq('event_id', eventId)
       .eq('role', 'volunteer');
     if (error) throw error;
