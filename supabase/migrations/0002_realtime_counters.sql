@@ -1,8 +1,8 @@
 -- 0002_realtime_counters.sql
 
 -- 1. Add Counter Columns with constraints
-ALTER TABLE events ADD COLUMN registered_count int NOT NULL DEFAULT 0 CHECK (registered_count >= 0);
-ALTER TABLE events ADD COLUMN waitlist_count int NOT NULL DEFAULT 0 CHECK (waitlist_count >= 0);
+ALTER TABLE events ADD COLUMN IF NOT EXISTS registered_count int NOT NULL DEFAULT 0 CHECK (registered_count >= 0);
+ALTER TABLE events ADD COLUMN IF NOT EXISTS waitlist_count int NOT NULL DEFAULT 0 CHECK (waitlist_count >= 0);
 
 -- 2. Backfill existing data safely
 UPDATE events e
@@ -27,6 +27,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql; -- Not SECURITY DEFINER, we want to check the actual caller
 
+DROP TRIGGER IF EXISTS protect_events_counters_trigger ON events;
 CREATE TRIGGER protect_events_counters_trigger
 BEFORE UPDATE ON events
 FOR EACH ROW EXECUTE FUNCTION protect_event_counters();
@@ -67,6 +68,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
+DROP TRIGGER IF EXISTS trigger_maintain_event_counters ON registrations;
 CREATE TRIGGER trigger_maintain_event_counters
 AFTER INSERT OR UPDATE OR DELETE ON registrations
 FOR EACH ROW EXECUTE FUNCTION maintain_event_counters();

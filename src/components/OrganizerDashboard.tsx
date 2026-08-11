@@ -96,7 +96,10 @@ export default function OrganizerDashboard() {
                     <div className="flex items-center gap-4">
                       <img src={event.posterUrl} alt={event.title} className="w-16 h-16 object-cover rounded-xl" />
                       <div>
-                        <h3 className="font-bold text-gray-900 dark:text-white line-clamp-1">{event.title}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-gray-900 dark:text-white line-clamp-1">{event.title}</h3>
+                          {event.isUnpublished && <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 rounded-full uppercase tracking-wider">Draft</span>}
+                        </div>
                         <p className="text-sm text-gray-500">{new Date(event.startTime).toLocaleDateString()}</p>
                       </div>
                     </div>

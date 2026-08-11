@@ -14,7 +14,7 @@ import { RegistrationService } from "../services/api";
 
 export default function OrganizerManageEventPage() {
   const { id } = useParams<{ id: string }>();
-  const { events, registrations, removeRegistrant, announcements, addAnnouncement, feedbacks, getVolunteers, inviteVolunteer, removeVolunteer, isLoading, error } = useData();
+  const { events, registrations, removeRegistrant, announcements, addAnnouncement, feedbacks, getVolunteers, inviteVolunteer, removeVolunteer, unpublishEvent, isLoading, error } = useData();
   const event = events.find(e => e.id === id);
 
   const [activeTab, setActiveTab] = useState<"registrants" | "analytics" | "announcements" | "feedback" | "volunteers">("registrants");
@@ -257,9 +257,28 @@ export default function OrganizerManageEventPage() {
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{event.title}</h1>
               <p className="text-gray-600 dark:text-gray-400">Total Registered: {liveRegs.length}</p>
             </div>
-            <Link to={`/events/${event.id}`} target="_blank" className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-              View Public Page
-            </Link>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={async () => {
+                  try {
+                    await unpublishEvent(event.id, !event.isUnpublished);
+                    toast.success(event.isUnpublished ? "Event published!" : "Event unpublished.");
+                  } catch(err: any) {
+                    toast.error(err.message || "Failed to update status");
+                  }
+                }}
+                className={`px-4 py-2 rounded-xl font-bold transition-colors ${
+                  event.isUnpublished 
+                    ? "bg-green-500 hover:bg-green-600 text-white" 
+                    : "bg-orange-500 hover:bg-orange-600 text-white"
+                }`}
+              >
+                {event.isUnpublished ? "Publish Event" : "Unpublish Event"}
+              </button>
+              <Link to={`/events/${event.id}`} target="_blank" className="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                View Public Page
+              </Link>
+            </div>
           </div>
         </header>
 
