@@ -370,7 +370,13 @@ BEGIN
     v_status := 'waitlisted';
   END IF;
 
-  INSERT INTO registrations (event_id, user_id, status) VALUES (p_event_id, v_user_id, v_status);
+  INSERT INTO registrations (event_id, user_id, status, created_at, attended) 
+  VALUES (p_event_id, v_user_id, v_status, now(), false)
+  ON CONFLICT (event_id, user_id) 
+  DO UPDATE SET 
+    status = EXCLUDED.status,
+    created_at = EXCLUDED.created_at,
+    attended = EXCLUDED.attended;
   
   INSERT INTO audit_log (actor_id, action, target_table, target_id, details)
   VALUES (v_user_id, 'register_for_event', 'registrations', p_event_id, jsonb_build_object('status', v_status));
