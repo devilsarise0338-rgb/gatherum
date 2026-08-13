@@ -30,7 +30,7 @@ export function mapCampusEventToEventItem(event: CampusEvent): EventItem {
       location: event.location
     },
     tickets: [
-      { id: 't1', name: 'General Admission', price: 0, capacity: event.capacity, sold: event.registeredCount, description: 'Standard Entry' }
+      { id: 't1', name: 'General Admission', capacity: event.capacity, sold: event.registeredCount, description: 'Standard Entry' }
     ],
     guests: Array.from({length: event.registeredCount}).map((_, i) => ({
       id: `g${i}`, name: 'Guest', email: 'guest@example.com', avatar: '', ticketType: 'General', checkedIn: false, rsvpDate: '', status: 'confirmed'

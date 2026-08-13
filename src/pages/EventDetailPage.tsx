@@ -14,7 +14,7 @@ export const EventDetailPage: React.FC = () => {
   const event = events.find(e => e.id === id) || events[0];
   
   // Adapt real event to mock UI expectations
-  const tickets = [{ id: 'general', name: 'General Admission', description: 'Standard Entry', price: 0, sold: event?.registeredCount || 0 }];
+  const tickets = [{ id: 'general', name: 'General Admission', description: 'Standard Entry', sold: event?.registeredCount || 0 }];
   const totalCapacity = event?.capacity || 0;
   const coverImage = event?.posterUrl || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=1200';
   const displayDate = event?.startTime || new Date().toISOString();
@@ -56,7 +56,7 @@ export const EventDetailPage: React.FC = () => {
 
   const totalSold = tickets.reduce((acc, t) => acc + t.sold, 0);
   const remainingSpots = Math.max(0, totalCapacity - totalSold);
-  const priceLabel = selectedTicket?.price === 0 ? 'FREE' : `${(selectedTicket?.price || 0) * ticketQuantity}`;
+
 
   if (!event) return <div className="p-20 text-center font-black text-4xl uppercase">Event Not Found</div>;
 
@@ -193,8 +193,8 @@ export const EventDetailPage: React.FC = () => {
                               <span className="font-bold text-ink/60 text-xs uppercase block">{ticket.description}</span>
                             </div>
                           </div>
-                          <span className="font-black text-xl text-ink">
-                            {ticket.price === 0 ? 'FREE' : `${ticket.price}`}
+                          <span className="font-display font-black text-xl text-ink">
+                            FREE
                           </span>
                         </div>
                       </label>
@@ -231,8 +231,7 @@ export const EventDetailPage: React.FC = () => {
 
                     <div className="pt-6 border-t-sharpie">
                       <div className="flex items-center justify-between mb-4">
-                        <span className="font-black uppercase text-ink text-xl">TOTAL DUE</span>
-                        <span className="font-display font-black text-4xl text-ink">{priceLabel}</span>
+                        <span className="font-display font-black text-4xl text-ink">FREE</span>
                       </div>
 
                       <button

@@ -308,6 +308,13 @@ export const AuthService = {
     if (error) throw error;
   },
 
+  updateProfileAvatar: async (avatarUrl: string): Promise<void> => {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) throw new Error("Not authenticated");
+    const { error } = await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', userData.user.id);
+    if (error) throw error;
+  },
+
   completeProfile: async (data: {
     fullName: string;
     rollNumber: string;

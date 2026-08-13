@@ -94,8 +94,8 @@ Key Topics:
     tags: ['Design', 'Typography', 'Networking', 'Print', 'Cocktails'],
     totalCapacity: 50,
     tickets: [
-      { id: 't_01', name: 'General Admission', price: 45, capacity: 40, sold: 34, description: 'Includes access to panel, exhibition, drinks & artisanal bites.' },
-      { id: 't_02', name: 'Patron Pass + Monograph', price: 120, capacity: 10, sold: 8, description: 'Includes VIP seating, signed hardcover monograph, and after-hours drinks.' },
+      { id: 't_01', name: 'General Admission', capacity: 40, sold: 34, description: 'Includes access to panel, exhibition, drinks & artisanal bites.' },
+      { id: 't_02', name: 'Patron Pass + Monograph', capacity: 10, sold: 8, description: 'Includes VIP seating, signed hardcover monograph, and after-hours drinks.' },
     ],
     guests: [
       { id: 'g_101', name: 'Sora Takahashi', email: 'sora@framer.io', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200', ticketType: 'General Admission', checkedIn: true, rsvpDate: '2026-08-10', status: 'confirmed' },
@@ -134,7 +134,7 @@ Menu Highlights:
     tags: ['Culinary', 'Natural Wine', 'Supper Club', 'Farm-to-Table'],
     totalCapacity: 24,
     tickets: [
-      { id: 't_03', name: 'Supper & Wine Pairing Seat', price: 185, capacity: 24, sold: 20, description: '5-course woodfired menu with full biodynamic wine pairings.' },
+      { id: 't_03', name: 'Supper & Wine Pairing Seat', capacity: 24, sold: 20, description: '5-course woodfired menu with full biodynamic wine pairings.' },
     ],
     guests: [
       { id: 'g_201', name: 'Chloe Dubois', email: 'chloe@atelier.fr', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200', ticketType: 'Supper & Wine Pairing Seat', checkedIn: false, rsvpDate: '2026-08-01', status: 'confirmed' },
@@ -170,8 +170,8 @@ Artist Lineup:
     tags: ['Ambient', 'Spatial Audio', 'Subterranean', 'Nightlife', 'Live Sound'],
     totalCapacity: 80,
     tickets: [
-      { id: 't_04', name: 'General Floor Cushion', price: 35, capacity: 60, sold: 58, description: 'Access to main listening sphere & tea service.' },
-      { id: 't_05', name: 'VIP Mezzanine Lounge', price: 65, capacity: 20, sold: 18, description: 'Elevated view, dedicated acoustic pod, elixir tasting.' },
+      { id: 't_04', name: 'General Floor Cushion', capacity: 60, sold: 58, description: 'Access to main listening sphere & tea service.' },
+      { id: 't_05', name: 'VIP Mezzanine Lounge', capacity: 20, sold: 18, description: 'Elevated view, dedicated acoustic pod, elixir tasting.' },
     ],
     guests: [
       { id: 'g_301', name: 'Liam O’Connor', email: 'liam@pitchfork.com', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200', ticketType: 'General Floor Cushion', checkedIn: false, rsvpDate: '2026-08-05', status: 'confirmed' },
@@ -206,7 +206,7 @@ Included:
     tags: ['Wellness', 'Ice Bath', 'Sauna', 'Running', 'Circadian'],
     totalCapacity: 30,
     tickets: [
-      { id: 't_06', name: 'Morning Pass', price: 50, capacity: 30, sold: 22, description: 'Full access to run, ice tubs, saunas, and juice bar.' },
+      { id: 't_06', name: 'Morning Pass', capacity: 30, sold: 22, description: 'Full access to run, ice tubs, saunas, and juice bar.' },
     ],
     guests: [],
   },
@@ -231,7 +231,7 @@ Included:
     tags: ['Founders', 'AI', 'Venture Capital', 'Networking', 'Breakfast'],
     totalCapacity: 20,
     tickets: [
-      { id: 't_07', name: 'Invited Founder / Investor', price: 0, capacity: 20, sold: 16, description: 'Complimentary pass by invitation or approval.' },
+      { id: 't_07', name: 'Invited Founder / Investor', capacity: 20, sold: 16, description: 'Complimentary pass by invitation or approval.' },
     ],
     guests: [],
   },
@@ -256,7 +256,7 @@ Included:
     tags: ['Generative Art', 'Gallery', 'Exhibition', 'Code Art'],
     totalCapacity: 100,
     tickets: [
-      { id: 't_08', name: 'Free RSVP', price: 0, capacity: 100, sold: 74, description: 'Entry to gallery opening and live plotter demos.' },
+      { id: 't_08', name: 'Free RSVP', capacity: 100, sold: 74, description: 'Entry to gallery opening and live plotter demos.' },
     ],
     guests: [],
   }

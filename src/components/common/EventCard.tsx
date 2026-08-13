@@ -19,16 +19,10 @@ export const EventCard: React.FC<EventCardProps> = ({ event, variant = 'grid', i
   const month = dateObj.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
   const day = dateObj.getDate();
   const weekday = dateObj.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-
-  // Get min price
-  const minPrice = event.tickets.length > 0
-    ? Math.min(...event.tickets.map(t => t.price))
-    : 0;
-
-  const priceLabel = minPrice === 0 ? 'FREE' : `${minPrice}`;
   
   // Calculate a subtle tilt based on index for the flyer effect
   const tiltDegrees = index % 2 === 0 ? 1.5 : -1.5;
+  const displayImage = event.coverImage || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=1200';
 
   if (variant === 'featured') {
     return (
@@ -41,7 +35,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, variant = 'grid', i
           {/* Cover Image - Brutalist Edge */}
           <div className="lg:w-2/5 relative h-72 lg:h-auto overflow-hidden border-b-sharpie lg:border-b-0 lg:border-r-sharpie">
             <img
-              src={event.coverImage}
+              src={displayImage}
               alt={event.title}
               className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-300"
             />
@@ -96,9 +90,6 @@ export const EventCard: React.FC<EventCardProps> = ({ event, variant = 'grid', i
               </div>
 
               <div className="flex items-center gap-4">
-                <span className="text-xl font-black uppercase text-ink">
-                  {priceLabel}
-                </span>
                 <span className="px-6 py-2 bg-ink text-white text-sm font-bold uppercase border-sharpie group-hover:bg-neon-pink transition-colors">
                   GRAB STUB
                 </span>
@@ -171,9 +162,6 @@ export const EventCard: React.FC<EventCardProps> = ({ event, variant = 'grid', i
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="font-black text-ink px-2 py-0.5 border-sharpie bg-white shadow-sharpie-sm">
-                {priceLabel}
-              </span>
             </div>
           </div>
         </div>

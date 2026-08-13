@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { StorageService } from '../services/storage';
+import { ImageUpload } from '../components/common/ImageUpload';
 import { useData } from '../contexts/DataContext';
 import { EventCategory, EventColorTheme, TicketType, EventItem } from '../types';
 import { CATEGORIES } from '../data/mockData';
 import { EventCard } from '../components/common/EventCard';
-import { Sparkles, Calendar, MapPin, Upload, Plus, Trash2, ArrowRight, ArrowLeft, CheckCircle2, Eye, CircleX } from 'lucide-react';
+import { Sparkles, Calendar, MapPin, Upload, Plus, Trash2, ArrowRight, ArrowLeft, CheckCircle2, Eye, CircleX, Image, ChevronRight } from 'lucide-react';
 
 const COVER_PRESETS = [
   { url: 'https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?auto=format&fit=crop&q=80&w=1200', theme: 'amber' as EventColorTheme, label: 'Warm Studio Lighting' },
@@ -17,14 +20,18 @@ const COVER_PRESETS = [
 
 export const EventCreatePage: React.FC = () => {
   const { createEvent } = useData();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [step, setStep] = useState<number>(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Form State
   const [title, setTitle] = useState('');
   const [tagline, setTagline] = useState('');
   const [description, setDescription] = useState('');
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [category, setCategory] = useState<EventCategory>('Design & Tech');
   const [date, setDate] = useState('2026-09-15');
   const [startTime, setStartTime] = useState('18:30');
@@ -41,19 +48,17 @@ export const EventCreatePage: React.FC = () => {
 
   // Tickets
   const [tickets, setTickets] = useState<TicketType[]>([
-    { id: 't_custom_1', name: 'General Admission', price: 35, capacity: 40, sold: 0, description: 'Includes entry & complimentary welcome drink.' }
+    { id: 't_custom_1', name: 'General Admission', capacity: 40, sold: 0, description: 'Includes entry & complimentary welcome drink.' }
   ]);
 
   // Requirements
-  const [requirements, setRequirements] = useState<string[]>([
-    'Bring photo ID for door verification',
-    'Dress code: Smart Casual / Minimalist'
+  const [requirements, setRequirements] = useState<{id: string, text: string}[]>([
+    { id: 'req_id', text: 'Bring photo ID for door verification' }
   ]);
-  const [newRequirement, setNewRequirement] = useState('');
 
   const handleAddTicket = () => {
     const newId = `t_custom_${Date.now()}`;
-    setTickets(prev => [...prev, { id: newId, name: 'VIP Pass', price: 75, capacity: 15, sold: 0, description: 'VIP seating & exclusive gift bag.' }]);
+    setTickets(prev => [...prev, { id: newId, name: 'VIP Pass', capacity: 15, sold: 0, description: 'VIP seating & exclusive gift bag.' }]);
   };
 
   const handleRemoveTicket = (id: string) => {
@@ -62,39 +67,47 @@ export const EventCreatePage: React.FC = () => {
     }
   };
 
-  const handleAddRequirement = () => {
-    if (newRequirement.trim()) {
-      setRequirements(prev => [...prev, newRequirement.trim()]);
-      setNewRequirement('');
-    }
-  };
-
-  const handlePublish = async () => {
-    const totalCapacity = tickets.reduce((acc, t) => acc + t.capacity, 0);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setIsSubmitting(true);
+    setSubmitError(null);
 
     try {
-      const eventId = await createEvent({
-        title: title || 'Untitled Design Salon',
-        description: tagline ? `${tagline}\n\n${description}` : (description || 'Join us for a curated gathering.'),
-        category: category as any,
-        posterUrl: customCoverUrl || coverImage,
-        startTime: `${date}T${startTime}:00`,
-        endTime: `${date}T${endTime}:00`,
-        location: address ? `${locationName} - ${address}` : (locationName || 'Location TBD'),
-        department: 'General',
-        capacity: totalCapacity,
-        isUnpublished: false,
-      });
+      let finalPosterUrl = '';
+      if (coverFile) {
+        finalPosterUrl = await StorageService.uploadImage(coverFile, 'events', user.id);
+      } else {
+        finalPosterUrl = customCoverUrl || coverImage;
+      }
 
-      navigate(`/event/${eventId}`);
-    } catch (err) {
-      alert("Failed to create event. Please check the console.");
+      await createEvent({
+        title,
+        description,
+        date,
+        startTime,
+        endTime,
+        locationName,
+        address,
+        category,
+        capacity: tickets.reduce((acc, t) => acc + t.capacity, 0),
+        tickets,
+        posterUrl: finalPosterUrl,
+        requirements: {
+          requiresId: requirements.some(r => r.id === 'req_id'),
+          requiresApproval: requirements.some(r => r.id === 'req_approval'),
+        }
+      } as any);
+      navigate('/host-dashboard');
+    } catch (err: any) {
       console.error(err);
+      setSubmitError(err.message || 'Failed to create event. Please try again.');
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+    <form onSubmit={handleSubmit} className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
       
       {/* Header & Multi-Step Progress Indicator */}
       <div className="space-y-4">
@@ -111,6 +124,7 @@ export const EventCreatePage: React.FC = () => {
           ].map((s) => (
             <button
               key={s.num}
+              type="button"
               onClick={() => setStep(s.num)}
               className={`px-4 py-2 text-xs font-black uppercase tracking-wider transition-all border-sharpie ${
                 step === s.num
@@ -132,6 +146,17 @@ export const EventCreatePage: React.FC = () => {
           <h3 className="font-display text-3xl font-black text-ink uppercase">STEP 1: EVENT INFO</h3>
 
           <div className="space-y-6">
+            <div className="space-y-4 pt-6 border-t-sharpie">
+              <h2 className="font-display font-black text-2xl uppercase tracking-wider text-ink flex items-center gap-3">
+                <Image className="w-6 h-6 text-neon-pink" /> 02 / CREATIVE
+              </h2>
+              
+              <ImageUpload
+                label="EVENT COVER ART"
+                maxSizeMB={10}
+                onFileSelect={setCoverFile}
+              />
+            </div>
             <div>
               <label className="block text-xs font-black uppercase tracking-wider text-ink mb-2">
                 EVENT TITLE *
@@ -274,6 +299,7 @@ export const EventCreatePage: React.FC = () => {
 
           <div className="pt-6 flex justify-end border-t-sharpie">
             <button
+              type="button"
               onClick={() => setStep(2)}
               className="px-6 py-3 bg-neon-pink text-white text-sm font-black uppercase tracking-wider border-sharpie shadow-sharpie transition-colors flex items-center gap-2 hover:bg-ink hover-sharpie-lift"
             >
@@ -318,52 +344,16 @@ export const EventCreatePage: React.FC = () => {
             ))}
           </div>
 
-          {/* Custom Image URL Option */}
-          <div className="space-y-2 pt-4">
-            <label className="block text-xs font-black uppercase tracking-wider text-ink">
-              OR CUSTOM COVER IMAGE URL
-            </label>
-            <input
-              type="url"
-              placeholder="https://images.unsplash.com/..."
-              value={customCoverUrl}
-              onChange={(e) => {
-                setCustomCoverUrl(e.target.value);
-                if (e.target.value) setCoverImage(e.target.value);
-              }}
-              className="w-full bg-white text-ink px-4 py-3 text-sm font-bold border-sharpie focus:outline-none focus:ring-2 focus:ring-neon-blue shadow-sharpie-sm"
-            />
-          </div>
-
-          {/* Manual Theme Color Override */}
-          <div className="space-y-4 pt-6 border-t-sharpie">
-            <label className="block text-xs font-black uppercase tracking-wider text-ink">
-              ACCENT PALETTE TINT
-            </label>
-            <div className="flex flex-wrap gap-4">
-              {(['amber', 'emerald', 'terracotta', 'cobalt', 'burgundy'] as EventColorTheme[]).map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setThemeColor(c)}
-                  className={`px-4 py-2 text-sm font-black uppercase transition-all border-sharpie ${
-                    themeColor === c ? 'bg-ink text-white shadow-sharpie-sm' : 'bg-white text-ink hover-sharpie-lift hover:bg-neon-yellow'
-                  }`}
-                >
-                  {c}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="pt-6 flex justify-between border-t-sharpie">
             <button
+              type="button"
               onClick={() => setStep(1)}
               className="px-6 py-3 bg-white text-ink text-sm font-black uppercase tracking-wider border-sharpie shadow-sharpie transition-colors flex items-center gap-2 hover:bg-neon-yellow hover-sharpie-lift"
             >
               <ArrowLeft className="w-5 h-5" /> BACK
             </button>
             <button
+              type="button"
               onClick={() => setStep(3)}
               className="px-6 py-3 bg-neon-pink text-white text-sm font-black uppercase tracking-wider border-sharpie shadow-sharpie transition-colors flex items-center gap-2 hover:bg-ink hover-sharpie-lift"
             >
@@ -382,6 +372,7 @@ export const EventCreatePage: React.FC = () => {
               <p className="text-ink text-sm font-bold">Set pass tiers, pricing, and maximum attendance limits.</p>
             </div>
             <button
+              type="button"
               onClick={handleAddTicket}
               className="px-6 py-3 bg-neon-yellow text-ink text-sm font-black uppercase tracking-wider border-sharpie shadow-sharpie hover-sharpie-lift flex items-center gap-2"
             >
@@ -396,6 +387,7 @@ export const EventCreatePage: React.FC = () => {
                   <span className="bg-ink text-white px-3 py-1 text-xs font-black uppercase border-sharpie inline-block">PASS #{index + 1}</span>
                   {tickets.length > 1 && (
                     <button
+                      type="button"
                       onClick={() => handleRemoveTicket(t.id)}
                       className="text-white bg-neon-pink p-1.5 border-sharpie shadow-sharpie-sm hover-sharpie-lift"
                     >
@@ -419,45 +411,18 @@ export const EventCreatePage: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-black uppercase text-ink mb-2">PRICE ($USD, 0 = FREE)</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={t.price}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setTickets(prev => prev.map(item => item.id === t.id ? { ...item, price: val } : item));
-                      }}
-                      className="w-full bg-white px-4 py-3 text-sm font-bold border-sharpie focus:outline-none focus:ring-2 focus:ring-neon-blue"
-                    />
-                  </div>
-
-                  <div>
                     <label className="block text-xs font-black uppercase text-ink mb-2">CAPACITY LIMIT</label>
-                    <input
+                    <input 
                       type="number"
                       min={1}
                       value={t.capacity}
                       onChange={(e) => {
-                        const val = Number(e.target.value);
+                        const val = parseInt(e.target.value) || 0;
                         setTickets(prev => prev.map(item => item.id === t.id ? { ...item, capacity: val } : item));
                       }}
-                      className="w-full bg-white px-4 py-3 text-sm font-bold border-sharpie focus:outline-none focus:ring-2 focus:ring-neon-blue"
+                      className="w-full bg-paper px-3 py-2 text-sm font-bold border-sharpie focus:outline-none focus:bg-white transition-colors"
                     />
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-black uppercase text-ink mb-2">PERKS / DESCRIPTION</label>
-                  <input
-                    type="text"
-                    value={t.description}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setTickets(prev => prev.map(item => item.id === t.id ? { ...item, description: val } : item));
-                    }}
-                    className="w-full bg-white px-4 py-3 text-sm font-bold border-sharpie focus:outline-none focus:ring-2 focus:ring-neon-blue"
-                  />
                 </div>
               </div>
             ))}
@@ -465,12 +430,14 @@ export const EventCreatePage: React.FC = () => {
 
           <div className="pt-6 flex justify-between border-t-sharpie">
             <button
+              type="button"
               onClick={() => setStep(2)}
               className="px-6 py-3 bg-white text-ink text-sm font-black uppercase tracking-wider border-sharpie shadow-sharpie transition-colors flex items-center gap-2 hover:bg-neon-yellow hover-sharpie-lift"
             >
               <ArrowLeft className="w-5 h-5" /> BACK
             </button>
             <button
+              type="button"
               onClick={() => setStep(4)}
               className="px-6 py-3 bg-neon-pink text-white text-sm font-black uppercase tracking-wider border-sharpie shadow-sharpie transition-colors flex items-center gap-2 hover:bg-ink hover-sharpie-lift"
             >
@@ -486,10 +453,14 @@ export const EventCreatePage: React.FC = () => {
           <div className="space-y-2 text-center">
             <span className="bg-neon-yellow px-3 py-1 text-sm font-black uppercase border-sharpie inline-block shadow-sharpie-sm transform -rotate-2">FINAL STEP</span>
             <h3 className="font-display text-4xl font-black text-ink uppercase mt-4">REVIEW & PUBLISH</h3>
-            <p className="text-ink text-sm font-bold">Verify how your event card looks.</p>
           </div>
 
-          {/* Live Card Preview Box */}
+          {submitError && (
+            <div className="bg-red-500 text-white p-4 font-bold border-sharpie uppercase text-sm mb-6">
+              {submitError}
+            </div>
+          )}
+
           <div className="max-w-md mx-auto relative group">
             <EventCard 
               event={{
@@ -498,7 +469,7 @@ export const EventCreatePage: React.FC = () => {
                 tagline: tagline || 'No tagline provided.',
                 description: description || '...',
                 category: category,
-                coverImage: customCoverUrl || coverImage,
+                coverImage: coverFile ? URL.createObjectURL(coverFile) : (customCoverUrl || coverImage),
                 themeColor: themeColor,
                 date: date,
                 startTime: startTime,
@@ -507,20 +478,8 @@ export const EventCreatePage: React.FC = () => {
                 locationName: locationName || 'Location TBD',
                 address: address || '',
                 isVirtual: isVirtual,
-                host: {
-                  id: 'host_you',
-                  name: 'You',
-                  avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-                  handle: '@yourhandle',
-                  bio: '',
-                  verified: true,
-                  totalEventsHosted: 1,
-                  totalAttendees: 0
-                },
                 tickets: tickets,
                 totalCapacity: tickets.reduce((a, b) => a + b.capacity, 0),
-                tags: [],
-                requirements: []
               } as EventItem}
               index={0}
             />
@@ -528,6 +487,7 @@ export const EventCreatePage: React.FC = () => {
 
           <div className="pt-8 flex justify-between border-t-sharpie">
             <button
+              type="button"
               onClick={() => setStep(3)}
               className="px-6 py-3 bg-white text-ink text-sm font-black uppercase tracking-wider border-sharpie shadow-sharpie transition-colors flex items-center gap-2 hover:bg-neon-yellow hover-sharpie-lift"
             >
@@ -535,15 +495,16 @@ export const EventCreatePage: React.FC = () => {
             </button>
 
             <button
-              onClick={handlePublish}
-              className="px-8 py-4 bg-neon-blue text-white text-sm font-black uppercase tracking-wider border-sharpie shadow-sharpie transition-colors flex items-center gap-2 hover:bg-ink hover-sharpie-lift"
+              type="submit"
+              disabled={isSubmitting}
+              className="px-8 py-4 bg-neon-blue text-white text-sm font-black uppercase tracking-wider border-sharpie shadow-sharpie transition-colors flex items-center gap-2 hover:bg-ink hover-sharpie-lift disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Sparkles className="w-5 h-5" /> PUBLISH LIVE
+              <Sparkles className="w-5 h-5" /> {isSubmitting ? 'PUBLISHING...' : 'PUBLISH LIVE'}
             </button>
           </div>
         </div>
       )}
 
-    </div>
+    </form>
   );
 };

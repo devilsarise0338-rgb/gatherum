@@ -32,7 +32,6 @@ export interface Guest {
 export interface TicketType {
   id: string;
   name: string;
-  price: number; // 0 for free
   capacity: number;
   sold: number;
   description: string;
@@ -84,7 +83,6 @@ export interface RSVPRecord {
   guestName: string;
   guestEmail: string;
   quantity: number;
-  totalPrice: number;
   qrCodeUrl: string;
   confirmedAt: string;
   status: 'valid' | 'used' | 'cancelled';

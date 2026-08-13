@@ -83,7 +83,7 @@ interface DataContextType {
   cancelRegistration: (eventId: string) => Promise<void>;
   checkConflict: (eventId: string) => CampusEvent | null;
   checkInUser: (ticketId: string) => Promise<CheckInResult>;
-  createEvent: (eventData: Omit<CampusEvent, "id" | "registeredCount" | "waitlistCount">) => Promise<string>;
+  createEvent: (data: Omit<CampusEvent, 'id' | 'organizerId' | 'registeredCount' | 'waitlistCount'>) => Promise<string>;
   saveTemplate: (template: Omit<EventTemplate, "id" | "organizerId">) => Promise<void>;
   removeRegistrant: (regId: string) => Promise<void>;
   addAnnouncement: (announcement: Omit<Announcement, "id" | "createdAt">) => Promise<void>;

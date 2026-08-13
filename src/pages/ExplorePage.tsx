@@ -13,7 +13,6 @@ export const ExplorePage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [priceFilter, setPriceFilter] = useState<'all' | 'free' | 'paid'>('all');
   const [locationFilter, setLocationFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>('all');
 
@@ -43,10 +42,7 @@ export const ExplorePage: React.FC = () => {
         if (!matchTitle && !matchDesc && !matchHost && !matchLoc) return false;
       }
 
-      // Price check
-      const minPrice = evt.tickets.length > 0 ? Math.min(...evt.tickets.map(t => t.price)) : 0;
-      if (priceFilter === 'free' && minPrice > 0) return false;
-      if (priceFilter === 'paid' && minPrice === 0) return false;
+
 
       // Location check
       if (locationFilter !== 'all' && !evt.address.toLowerCase().includes(locationFilter.toLowerCase())) {
@@ -55,14 +51,14 @@ export const ExplorePage: React.FC = () => {
 
       return true;
     });
-  }, [events, selectedCategory, searchTerm, priceFilter, locationFilter]);
+  }, [events, selectedCategory, searchTerm, locationFilter]);
 
-  const hasActiveFilters = selectedCategory !== 'All' || searchTerm || priceFilter !== 'all' || locationFilter !== 'all';
+  const hasActiveFilters = selectedCategory !== 'All' || searchTerm || locationFilter !== 'all';
 
   const resetFilters = () => {
     setSelectedCategory('All');
     setSearchTerm('');
-    setPriceFilter('all');
+
     setLocationFilter('all');
   };
 
@@ -101,16 +97,6 @@ export const ExplorePage: React.FC = () => {
           </div>
 
           <div className="flex items-center justify-between w-full md:w-auto gap-4">
-            {/* Price Filter dropdown */}
-            <select
-              value={priceFilter}
-              onChange={(e) => setPriceFilter(e.target.value as any)}
-              className="bg-white text-ink font-black uppercase px-4 py-3 border-sharpie focus:outline-none focus:bg-neon-blue cursor-pointer"
-            >
-              <option value="all">ALL PRICES</option>
-              <option value="free">FREE ONLY</option>
-              <option value="paid">TICKETED</option>
-            </select>
 
             {/* View Mode Toggle */}
             <div className="flex items-center bg-white border-sharpie">
@@ -204,7 +190,6 @@ export const ExplorePage: React.FC = () => {
                   <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mt-6">
                     <div className="flex items-center gap-4 text-ink font-black uppercase text-sm">
                       <span className="flex items-center gap-1 bg-white border-sharpie px-2 py-1"><MapPin className="w-4 h-4" /> {evt.locationName}</span>
-                      <span className="bg-neon-pink text-white border-sharpie px-2 py-1">{evt.tickets[0]?.price ? `${evt.tickets[0].price}` : 'FREE'}</span>
                     </div>
                     
                     <Link

@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { AuthService } from '../services/api';
-import { Settings, User, Shield, LogOut, CheckCircle } from 'lucide-react';
+import { Settings, User, Shield, LogOut, CheckCircle, Image as ImageIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { StorageService } from '../services/storage';
+import { ImageUpload } from '../components/common/ImageUpload';
 
 export const ProfileSettingsPage: React.FC = () => {
   const { user, logout } = useAuth();
@@ -28,6 +30,21 @@ export const ProfileSettingsPage: React.FC = () => {
     } catch (e) {
       console.error(e);
       alert('Failed to update privacy settings.');
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleAvatarUpload = async (file: File | null) => {
+    if (!file || !user) return;
+    setIsUpdating(true);
+    try {
+      const newUrl = await StorageService.uploadImage(file, 'avatars', user.id, profile.avatar_url);
+      await AuthService.updateProfileAvatar(newUrl);
+      setProfile({ ...profile, avatar_url: newUrl });
+    } catch (err) {
+      console.error("Avatar upload failed:", err);
+      alert("Failed to upload avatar.");
     } finally {
       setIsUpdating(false);
     }
@@ -67,16 +84,32 @@ export const ProfileSettingsPage: React.FC = () => {
           <div className="flex items-center gap-2 border-b-sharpie pb-4">
             <User className="w-6 h-6 text-neon-blue" />
             <h2 className="font-display text-2xl font-black uppercase text-ink">PERSONAL LOG</h2>
+            {isUpdating && <span className="ml-auto text-xs font-black bg-neon-yellow px-2 py-1 uppercase animate-pulse">UPDATING...</span>}
           </div>
           
           <div className="space-y-4">
-            <div>
-              <p className="text-xs font-black uppercase text-ink/60">FULL NAME</p>
-              <p className="text-lg font-bold text-ink uppercase">{profile.full_name}</p>
-            </div>
-            <div>
-              <p className="text-xs font-black uppercase text-ink/60">EMAIL (RESTRICTED)</p>
-              <p className="text-lg font-bold text-ink uppercase">{profile.email}</p>
+            <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-center">
+              <div className="w-32 h-32 shrink-0">
+                <ImageUpload
+                  label="AVATAR"
+                  defaultImage={profile.avatar_url || 'https://images.unsplash.com/photo-1555431189-0af56b2ac1bb?auto=format&fit=crop&q=80&w=200'}
+                  maxSizeMB={5}
+                  onFileSelect={(file) => {
+                    if (file) handleAvatarUpload(file);
+                  }}
+                  className="w-full h-full"
+                />
+              </div>
+              <div className="space-y-4 flex-1">
+                <div>
+                  <p className="text-xs font-black uppercase text-ink/60">FULL NAME</p>
+                  <p className="text-lg font-bold text-ink uppercase">{profile.full_name}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-black uppercase text-ink/60">EMAIL (RESTRICTED)</p>
+                  <p className="text-lg font-bold text-ink uppercase">{profile.email}</p>
+                </div>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>

@@ -16,10 +16,7 @@ export const HostDashboardPage: React.FC = () => {
 
   // Stats calculation
   const totalAttendees = hostedEvents.reduce((acc, evt) => acc + evt.guests.length, 0);
-  const totalRevenue = hostedEvents.reduce((acc, evt) => {
-    const evtRev = evt.tickets.reduce((tAcc, t) => tAcc + (t.price * t.sold), 0);
-    return acc + evtRev;
-  }, 0);
+
   const totalCapacity = hostedEvents.reduce((acc, evt) => acc + evt.totalCapacity, 0);
   const occupancyRate = totalCapacity > 0 ? Math.round((totalAttendees / totalCapacity) * 100) : 85;
 
@@ -61,18 +58,6 @@ export const HostDashboardPage: React.FC = () => {
           <p className="font-bold text-xs uppercase bg-white border-sharpie inline-block px-2 py-1 relative z-10 flex items-center gap-1">
             <TrendingUp className="w-3 h-3 text-neon-pink" /> +18% VS LAST MONTH
           </p>
-        </div>
-
-        <div className="bg-paper p-6 border-sharpie shadow-sharpie space-y-4 relative overflow-hidden group hover:bg-neon-blue transition-colors">
-          <div className="absolute -right-4 -bottom-4 w-20 h-20 bg-white border-sharpie opacity-50 group-hover:opacity-100 transition-opacity transform rotate-12"></div>
-          <div className="flex items-center justify-between relative z-10">
-            <span className="font-black uppercase tracking-wider text-ink/70 text-sm">TICKET REVENUE</span>
-            <div className="p-2 bg-ink text-neon-yellow border-sharpie">
-              <DollarSign className="w-6 h-6" />
-            </div>
-          </div>
-          <p className="font-display text-5xl font-black text-ink relative z-10">${totalRevenue.toLocaleString()}</p>
-          <p className="font-bold text-xs uppercase text-ink/80 relative z-10">GROSS SALES ACROSS PASSES</p>
         </div>
 
         <div className="bg-paper p-6 border-sharpie shadow-sharpie space-y-4 relative overflow-hidden group hover:bg-neon-pink transition-colors">
