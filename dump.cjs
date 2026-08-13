@@ -6,9 +6,7 @@ const fileList = [
   'openapi.json',
   'package.json',
   'tsconfig.json',
-  'vite.config.ts',
-  'supabase/migrations/0001_gatherum_schema.sql',
-  'supabase/migrations/0002_realtime_counters.sql'
+  'vite.config.ts'
 ];
 
 function getFiles(dir, extArray) {
@@ -30,7 +28,8 @@ function getFiles(dir, extArray) {
 }
 
 const srcFiles = getFiles('src', ['.ts', '.tsx', '.css']);
-fileList.push(...srcFiles);
+const sqlFiles = getFiles('supabase', ['.sql']);
+fileList.push(...srcFiles, ...sqlFiles);
 
 let output = '# Gatherum Full Source Code\n\n';
 

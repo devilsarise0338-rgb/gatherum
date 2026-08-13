@@ -1,38 +1,116 @@
 @import "tailwindcss";
 
-@theme {
-  --color-primary: #FF5A5F;
-  --color-primary-hover: #E0484D;
-  --color-accent: #FFB400;
-  --color-bg-light: #F9F7F5;
-  --color-bg-dark: #1E1E1E;
-  --color-surface-light: #FFFFFF;
-  --color-surface-dark: #2A2A2A;
-  
-  --font-heading: 'Outfit', sans-serif;
-  --font-body: 'Inter', sans-serif;
-
-  --text-display-large: clamp(3rem, 8vw, 6rem);
-  --text-display-large--line-height: 1;
-  --text-display-large--letter-spacing: -0.04em;
-  --text-display-large--font-weight: 800;
-
-  --text-display-medium: clamp(2.5rem, 5vw, 4rem);
-  --text-display-medium--line-height: 1.05;
-  --text-display-medium--letter-spacing: -0.02em;
-  --text-display-medium--font-weight: 700;
-
-  --text-body-relaxed: 1.125rem;
-  --text-body-relaxed--line-height: 1.7;
-}
-
 @layer base {
-  body {
-    @apply bg-bg-light text-gray-900 font-body transition-colors duration-300;
+  :root {
+    --bg-paper: #F6F6F4;
+    --text-ink: #0A0A0A;
+    --neon-yellow: #E5FF00;
+    --neon-blue: #0055FF;
+    --neon-pink: #FF0055;
   }
-  
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-heading tracking-tight;
+
+  body {
+    font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-paper);
+    color: var(--text-ink);
+    font-weight: 500;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    font-weight: 800;
+    text-transform: uppercase;
   }
 }
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-paper);
+  border-left: 4px solid var(--text-ink);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--neon-blue);
+  border: 4px solid var(--text-ink);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neon-pink);
+}
+
+@layer utilities {
+  .border-sharpie {
+    border: 4px solid var(--text-ink);
+  }
+  .border-t-sharpie {
+    border-top: 4px solid var(--text-ink);
+  }
+  .border-b-sharpie {
+    border-bottom: 4px solid var(--text-ink);
+  }
+  .border-l-sharpie {
+    border-left: 4px solid var(--text-ink);
+  }
+  .border-r-sharpie {
+    border-right: 4px solid var(--text-ink);
+  }
+
+  .shadow-sharpie {
+    box-shadow: 6px 6px 0px 0px var(--text-ink);
+  }
+  
+  .shadow-sharpie-sm {
+    box-shadow: 4px 4px 0px 0px var(--text-ink);
+  }
+
+  .hover-sharpie-lift {
+    transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;
+  }
+  .hover-sharpie-lift:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 8px 8px 0px 0px var(--text-ink);
+  }
+  .hover-sharpie-lift:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0px 0px var(--text-ink);
+  }
+
+  /* Text Stroke for massive titles */
+  .text-stroke-ink {
+    -webkit-text-stroke: 2px var(--text-ink);
+    color: transparent;
+  }
+
+  .text-stroke-neon-pink {
+    -webkit-text-stroke: 2px var(--neon-pink);
+    color: transparent;
+  }
+
+  .bg-paper { background-color: var(--bg-paper); }
+  .bg-ink { background-color: var(--text-ink); }
+  .bg-neon-yellow { background-color: var(--neon-yellow); }
+  .bg-neon-blue { background-color: var(--neon-blue); }
+  .bg-neon-pink { background-color: var(--neon-pink); }
+  
+  .text-paper { color: var(--bg-paper); }
+  .text-ink { color: var(--text-ink); }
+  .text-neon-yellow { color: var(--neon-yellow); }
+  .text-neon-blue { color: var(--neon-blue); }
+  .text-neon-pink { color: var(--neon-pink); }
+}
+
+/* Ticket Stub Effect */
+.stub-notch-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.stub-edge {
+  background-image: radial-gradient(circle at 10px 10px, transparent 12px, var(--bg-paper) 13px);
+  background-size: 20px 20px;
+  background-position: -10px -10px;
+}
+
 

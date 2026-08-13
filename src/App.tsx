@@ -1,95 +1,87 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
-import React, { Suspense } from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { MotionConfig } from "motion/react";
-
+import React, { useEffect, Suspense } from 'react';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 const Toaster = React.lazy(() => import("react-hot-toast").then(m => ({ default: m.Toaster })));
-import { AuthProvider } from "./contexts/AuthContext";
-import { DataProvider } from "./contexts/DataContext";
+import { AppProvider, useApp } from './contexts/AppContext';
+import { AuthProvider } from './contexts/AuthContext';
+import { DataProvider } from './contexts/DataContext';
+import { NavBar } from './components/common/NavBar';
+import { Footer } from './components/common/Footer';
+import { SplashIntro } from './components/SplashIntro';
 
-import Navbar from "./components/Navbar";
-import Footer from "./components/Footer";
-import LandingPage from "./components/LandingPage";
-import LoginPage from "./components/LoginPage";
-import SignUpPage from "./components/SignUpPage";
-import ProtectedRoute from "./components/ProtectedRoute";
-import MaintenanceModeWrapper from "./components/MaintenanceModeWrapper";
+import { Homepage } from './pages/Homepage';
+import { ExplorePage } from './pages/ExplorePage';
+import { EventDetailPage } from './pages/EventDetailPage';
+import { EventCreatePage } from './pages/EventCreatePage';
+import { AuthPage } from './pages/AuthPage';
+import { HostDashboardPage } from './pages/HostDashboardPage';
+import { GuestManagementPage } from './pages/GuestManagementPage';
+import { TicketConfirmationPage } from './pages/TicketConfirmationPage';
+import { MyEventsPage } from './pages/MyEventsPage';
+import { HostPublicProfilePage } from './pages/HostPublicProfilePage';
+import { NotFoundPage } from './pages/NotFoundPage';
+import { ProtectedRoute } from './components/common/ProtectedRoute';
+import { ProfileCompletionPage } from './pages/ProfileCompletionPage';
+import { ProfileSettingsPage } from './pages/ProfileSettingsPage';
+import { AdminDashboardPage } from './pages/AdminDashboardPage';
 
-import EventsPage from "./components/EventsPage";
-import EventDetailPage from "./components/EventDetailPage";
+// Scroll to top on route change
+const ScrollToTop = () => {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+};
 
-import StudentDashboard from "./components/StudentDashboard";
-import StudentTicketsPage from "./components/StudentTicketsPage";
-import OrganizerDashboard from "./components/OrganizerDashboard";
-import OrganizerCheckinPage from "./components/OrganizerCheckinPage";
-import AdminDashboard from "./components/AdminDashboard";
+const MainContent: React.FC = () => {
+  const { showSplash, setShowSplash } = useApp();
 
-import OrganizerEventWizard from "./components/OrganizerEventWizard";
-import OrganizerManageEventPage from "./components/OrganizerManageEventPage";
-import ProfileSettings from "./components/ProfileSettings";
-import PublicOrganizerPage from "./components/PublicOrganizerPage";
-import ProfileCompletionForm from "./components/ProfileCompletionForm";
+  return (
+    <div className="min-h-screen flex flex-col bg-[#FAF7F2] text-[#1C1917]">
+      {showSplash && (
+        <SplashIntro onComplete={() => setShowSplash(false)} />
+      )}
+
+      <NavBar />
+      
+      <main className="flex-1">
+        <Suspense fallback={null}>
+          <Toaster position="bottom-center" />
+        </Suspense>
+        <ScrollToTop />
+        <Routes>
+          <Route path="/" element={<Homepage />} />
+          <Route path="/explore" element={<ExplorePage />} />
+          <Route path="/event/:id" element={<EventDetailPage />} />
+          <Route path="/create" element={<ProtectedRoute allowedRoles={['organizer', 'admin']}><EventCreatePage /></ProtectedRoute>} />
+          <Route path="/auth" element={<AuthPage />} />
+          <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['organizer', 'admin']}><HostDashboardPage /></ProtectedRoute>} />
+          <Route path="/guest-management/:eventId" element={<ProtectedRoute allowedRoles={['organizer', 'admin']}><GuestManagementPage /></ProtectedRoute>} />
+          <Route path="/ticket/:rsvpId" element={<ProtectedRoute><TicketConfirmationPage /></ProtectedRoute>} />
+          <Route path="/my-events" element={<ProtectedRoute><MyEventsPage /></ProtectedRoute>} />
+          <Route path="/host/:hostId" element={<HostPublicProfilePage />} />
+          <Route path="/complete-profile" element={<ProtectedRoute><ProfileCompletionPage /></ProtectedRoute>} />
+          <Route path="/settings" element={<ProtectedRoute><ProfileSettingsPage /></ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboardPage /></ProtectedRoute>} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </main>
+
+      <Footer />
+    </div>
+  );
+};
 
 export default function App() {
   return (
-    <AuthProvider>
-      <DataProvider>
-          <Router>
-            <MotionConfig reducedMotion="user">
-              <div className="flex flex-col min-h-screen">
-                <Navbar />
-                <main className="flex-grow">
-                  <Suspense fallback={null}>
-                    <Toaster position="bottom-center" />
-                  </Suspense>
-                  <MaintenanceModeWrapper>
-                  <Routes>
-                    {/* Public Routes */}
-                    <Route path="/" element={<LandingPage />} />
-                    <Route path="/login" element={<LoginPage />} />
-                    <Route path="/signup" element={<SignUpPage />} />
-                    <Route path="/events" element={<EventsPage />} />
-                    <Route path="/events/:id" element={<EventDetailPage />} />
-                    <Route path="/c/:id" element={<PublicOrganizerPage />} />
-
-                    {/* Profile completion — requires login but NOT profile_completed */}
-                    <Route element={<ProtectedRoute skipProfileCheck />}>
-                      <Route path="/complete-profile" element={<ProfileCompletionForm />} />
-                    </Route>
-
-                    {/* Protected Routes */}
-                    <Route element={<ProtectedRoute allowedRoles={["student"]} />}>
-                      <Route path="/student" element={<StudentDashboard />} />
-                      <Route path="/student/tickets" element={<StudentTicketsPage />} />
-                    </Route>
-
-                    <Route element={<ProtectedRoute allowedRoles={["organizer"]} />}>
-                      <Route path="/organizer" element={<OrganizerDashboard />} />
-                      <Route path="/organizer/events/new" element={<OrganizerEventWizard />} />
-                      <Route path="/organizer/events/:id" element={<OrganizerManageEventPage />} />
-                    </Route>
-
-                    {/* Shared protected routes */}
-                    <Route element={<ProtectedRoute />}>
-                      <Route path="/settings" element={<ProfileSettings />} />
-                      <Route path="/organizer/checkin/:eventId" element={<OrganizerCheckinPage />} />
-                    </Route>
-
-                    <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
-                      <Route path="/admin/*" element={<AdminDashboard />} />
-                    </Route>
-                  </Routes>
-                </MaintenanceModeWrapper>
-              </main>
-              <Footer />
-            </div>
-            </MotionConfig>
-          </Router>
-      </DataProvider>
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <DataProvider>
+          <AppProvider>
+            <MainContent />
+          </AppProvider>
+        </DataProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
