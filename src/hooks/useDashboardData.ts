@@ -38,7 +38,7 @@ export function useStudentDashboard(volunteeringEventIds: string[]) {
       };
     }
 
-    const userRegs = registrations.filter(r => r.studentId === user.id);
+    const userRegs = registrations.filter(r => r.studentId === user.id && r.status !== 'cancelled');
     const now = new Date().getTime();
     
     const registeredItems = userRegs

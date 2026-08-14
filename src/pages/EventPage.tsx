@@ -16,7 +16,7 @@ const EventPage: React.FC = () => {
 
   const userRegistration = useMemo(() => {
     if (!user) return null;
-    return registrations.find(r => r.eventId === id && r.studentId === user.id);
+    return registrations.find(r => r.eventId === id && r.studentId === user.id && r.status !== 'cancelled');
   }, [registrations, id, user]);
 
   if (!event) {

@@ -169,44 +169,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [user, events, registrations]);
 
   const registerForEvent = useCallback(async (eventId: string) => {
-    const { status } = await RegistrationService.register(eventId);
+    await RegistrationService.register(eventId);
     const regs = await RegistrationService.getRegistrations();
     setRegistrations(regs);
-    setEvents(prev => prev.map(e => {
-      if (e.id !== eventId) return e;
-      return status === 'registered'
-        ? { ...e, registeredCount: e.registeredCount + 1 }
-        : { ...e, waitlistCount: e.waitlistCount + 1 };
-    }));
+    const updatedEvent = await EventService.getEventById(eventId);
+    if (updatedEvent) {
+      setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+    }
   }, []);
 
   const joinWaitlist = useCallback(async (eventId: string) => {
-    const { status } = await RegistrationService.register(eventId);
+    await RegistrationService.register(eventId);
     const regs = await RegistrationService.getRegistrations();
     setRegistrations(regs);
-    setEvents(prev => prev.map(e => {
-      if (e.id !== eventId) return e;
-      return status === 'registered'
-        ? { ...e, registeredCount: e.registeredCount + 1 }
-        : { ...e, waitlistCount: e.waitlistCount + 1 };
-    }));
+    const updatedEvent = await EventService.getEventById(eventId);
+    if (updatedEvent) {
+      setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
+    }
   }, []);
 
   const cancelRegistration = useCallback(async (eventId: string) => {
-    const reg = registrations.find(r => r.eventId === eventId && r.studentId === user?.id);
     await RegistrationService.cancelRegistration(eventId);
     const regs = await RegistrationService.getRegistrations();
     setRegistrations(regs);
-    if (reg) {
-      setEvents(prev => prev.map(e => {
-        if (e.id === eventId) {
-          if (reg.status === 'registered') return { ...e, registeredCount: Math.max(0, e.registeredCount - 1) };
-          if (reg.status === 'waitlisted') return { ...e, waitlistCount: Math.max(0, e.waitlistCount - 1) };
-        }
-        return e;
-      }));
+    const updatedEvent = await EventService.getEventById(eventId);
+    if (updatedEvent) {
+      setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
     }
-  }, [registrations, user?.id]);
+  }, []);
 
   const checkInUser = useCallback(async (ticketId: string): Promise<CheckInResult> => {
     const result = await RegistrationService.checkIn(ticketId);
