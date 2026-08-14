@@ -1,87 +1,63 @@
-import React, { useEffect, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
-const Toaster = React.lazy(() => import("react-hot-toast").then(m => ({ default: m.Toaster })));
-import { AppProvider, useApp } from './contexts/AppContext';
-import { AuthProvider } from './contexts/AuthContext';
-import { DataProvider } from './contexts/DataContext';
-import { NavBar } from './components/common/NavBar';
-import { Footer } from './components/common/Footer';
-import { SplashIntro } from './components/SplashIntro';
+import { Routes, Route } from 'react-router-dom';
 
-import { Homepage } from './pages/Homepage';
-import { ExplorePage } from './pages/ExplorePage';
-import { EventDetailPage } from './pages/EventDetailPage';
-import { EventCreatePage } from './pages/EventCreatePage';
-import { AuthPage } from './pages/AuthPage';
-import { HostDashboardPage } from './pages/HostDashboardPage';
-import { GuestManagementPage } from './pages/GuestManagementPage';
-import { TicketConfirmationPage } from './pages/TicketConfirmationPage';
-import { MyEventsPage } from './pages/MyEventsPage';
-import { HostPublicProfilePage } from './pages/HostPublicProfilePage';
-import { NotFoundPage } from './pages/NotFoundPage';
-import { ProtectedRoute } from './components/common/ProtectedRoute';
-import { ProfileCompletionPage } from './pages/ProfileCompletionPage';
-import { ProfileSettingsPage } from './pages/ProfileSettingsPage';
-import { AdminDashboardPage } from './pages/AdminDashboardPage';
+import Home from './pages/Home';
+import Explore from './pages/Explore';
+import EventPage from './pages/EventPage';
+import OrganizerDashboard from './pages/organizer/OrganizerDashboard';
+import StudentDashboard from './pages/student/StudentDashboard';
+import VolunteerDashboard from './pages/volunteer/VolunteerDashboard';
+import AdminDashboard from './pages/admin/AdminDashboard';
+import StudentTickets from './pages/student/StudentTickets';
+import VolunteerCheckIn from './pages/volunteer/VolunteerCheckIn';
+import OrganizerEventCreation from './pages/organizer/OrganizerEventCreation';
+import OrganizerEventManagement from './pages/organizer/OrganizerEventManagement';
+import OrganizerCheckIn from './pages/organizer/OrganizerCheckIn';
+import AdminUserManagement from './pages/admin/AdminUserManagement';
+import AdminEventModeration from './pages/admin/AdminEventModeration';
+import AdminSettings from './pages/admin/AdminSettings';
+import AuthPage from './pages/AuthPage';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
-// Scroll to top on route change
-const ScrollToTop = () => {
-  const { pathname } = useLocation();
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
-  return null;
-};
-
-const MainContent: React.FC = () => {
-  const { showSplash, setShowSplash } = useApp();
-
+function App() {
   return (
-    <div className="min-h-screen flex flex-col bg-[#FAF7F2] text-[#1C1917]">
-      {showSplash && (
-        <SplashIntro onComplete={() => setShowSplash(false)} />
-      )}
+    <div className="min-h-screen bg-background text-on-background font-body-md">
+      <Routes>
+        {/* Core Pages */}
+        <Route path="/" element={<Home />} />
+        <Route path="/events" element={<Explore />} />
+        <Route path="/events/:id" element={<EventPage />} />
+        <Route path="/auth" element={<AuthPage />} />
 
-      <NavBar />
-      
-      <main className="flex-1">
-        <Suspense fallback={null}>
-          <Toaster position="bottom-center" />
-        </Suspense>
-        <ScrollToTop />
-        <Routes>
-          <Route path="/" element={<Homepage />} />
-          <Route path="/explore" element={<ExplorePage />} />
-          <Route path="/event/:id" element={<EventDetailPage />} />
-          <Route path="/create" element={<ProtectedRoute allowedRoles={['organizer', 'admin']}><EventCreatePage /></ProtectedRoute>} />
-          <Route path="/auth" element={<AuthPage />} />
-          <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['organizer', 'admin']}><HostDashboardPage /></ProtectedRoute>} />
-          <Route path="/guest-management/:eventId" element={<ProtectedRoute allowedRoles={['organizer', 'admin']}><GuestManagementPage /></ProtectedRoute>} />
-          <Route path="/ticket/:rsvpId" element={<ProtectedRoute><TicketConfirmationPage /></ProtectedRoute>} />
-          <Route path="/my-events" element={<ProtectedRoute><MyEventsPage /></ProtectedRoute>} />
-          <Route path="/host/:hostId" element={<HostPublicProfilePage />} />
-          <Route path="/complete-profile" element={<ProtectedRoute><ProfileCompletionPage /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><ProfileSettingsPage /></ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminDashboardPage /></ProtectedRoute>} />
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </main>
+        {/* Student Experience */}
+        <Route element={<ProtectedRoute allowedRoles={['student']} />}>
+          <Route path="/student" element={<StudentDashboard />} />
+          <Route path="/student/tickets" element={<StudentTickets />} />
+        </Route>
 
-      <Footer />
+        {/* Volunteer Experience (Assume volunteers can be any role for now, but usually organizer/admin. We'll leave it to organizers/admins or custom role if exists. Gatherum didn't strictly separate volunteer as a role in DB, but wait, there is no volunteer role in AuthContext, let's allow organizer/admin) Wait, AuthContext defines Role as 'student' | 'organizer' | 'admin'. So let's just make volunteer accessible to organizers and admins? No, students can be volunteers? Let's just leave it protected for all authenticated users if we aren't sure, or look at how volunteer is handled. Wait, let's protect it so anyone logged in can access it if no allowedRoles is specified. */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/volunteer" element={<VolunteerDashboard />} />
+          <Route path="/volunteer/checkin/:eventId" element={<VolunteerCheckIn />} />
+        </Route>
+
+        {/* Organizer Experience */}
+        <Route element={<ProtectedRoute allowedRoles={['organizer', 'admin']} />}>
+          <Route path="/organizer" element={<OrganizerDashboard />} />
+          <Route path="/organizer/events/new" element={<OrganizerEventCreation />} />
+          <Route path="/organizer/events/:id" element={<OrganizerEventManagement />} />
+          <Route path="/organizer/checkin/:eventId" element={<OrganizerCheckIn />} />
+        </Route>
+
+        {/* Admin Experience */}
+        <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/admin/users" element={<AdminUserManagement />} />
+          <Route path="/admin/moderation" element={<AdminEventModeration />} />
+          <Route path="/admin/settings" element={<AdminSettings />} />
+        </Route>
+      </Routes>
     </div>
   );
-};
-
-export default function App() {
-  return (
-    <BrowserRouter>
-      <AuthProvider>
-        <DataProvider>
-          <AppProvider>
-            <MainContent />
-          </AppProvider>
-        </DataProvider>
-      </AuthProvider>
-    </BrowserRouter>
-  );
 }
+
+export default App;
