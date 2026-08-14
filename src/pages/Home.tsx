@@ -1,167 +1,119 @@
 import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Navbar } from '../components/layout/Navbar';
-import { Button } from '../components/ui/Button';
-import { Card } from '../components/ui/Card';
-import { Badge } from '../components/ui/Badge';
+import { Footer } from '../components/layout/Footer';
 import { useData } from '../contexts/DataContext';
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
   const { events } = useData();
   
-  const publishedEvents = useMemo(() => events.filter(e => !e.isUnpublished), [events]);
-  const featuredEvent = publishedEvents.length > 0 ? publishedEvents[0] : null;
+  const publishedEvents = useMemo(() => events.filter(e => !e.isUnpublished).sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()), [events]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <>
       <Navbar />
-
-      {/* Hero Section */}
-      <section className="relative min-h-screen flex items-center justify-center pt-24 pb-16 px-6 md:px-16 border-b-2 border-grid-line overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          <div 
-            className="w-full h-full bg-cover bg-center object-cover transform scale-105" 
-            style={{ backgroundImage: 'url(https://lh3.googleusercontent.com/aida-public/AB6AXuADMi6aj7AWVzMNy1jgLZ84_0LyTBau9mlTjm98-iFpYMORVUN8ATustVxDxQS97COzDwbAT5b0gmmZePCLLVTBEhqf6qWEfa9KKRIg68z7auFe_8tsf7-TrWOe-e94OWBW6JW6S64FeOQdsYDgQcSuQm44zuiKHGhhI6a1lNYNWMqS6NMKJyizqyAkxZV_JsYhWmfjSEDxSTtvX0zmek-2Ml3DOh-5LqaLvCz4NsisAUnATTYB9ain)' }}
-          ></div>
-          <div className="absolute inset-0 bg-gradient-to-b from-charcoal-base/20 to-charcoal-base/90"></div>
-          <div className="hero-grain"></div>
-        </div>
-
-        <div className="relative z-10 w-full max-w-7xl mx-auto flex flex-col items-center text-center mt-12 md:mt-0">
-          <span className="font-label-caps text-label-caps text-primary tracking-widest mb-6 uppercase border border-primary px-4 py-1">
-            Exclusive Access
-          </span>
-          <h1 className="font-display-hero text-[56px] md:text-[100px] text-on-surface mb-8 leading-[0.9] max-w-5xl uppercase">
-            Discover the<br />
-            <span className="italic font-light text-primary/90">Extraordinary.</span>
-          </h1>
-          <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mb-12 border-l-4 border-primary pl-4 text-left md:text-center md:border-l-0 md:pl-0">
-            Curated experiences for the modern community. Step into a world where every detail is designed for the discerning individual.
-          </p>
-          <Button 
-            size="lg" 
-            onClick={() => navigate('/events')}
-            className="shadow-[8px_8px_0px_0px_rgba(212,175,55,0.3)] hover:shadow-none hover:translate-y-1 hover:translate-x-1"
-          >
-            Explore Events
-          </Button>
-        </div>
-      </section>
-
-      {/* Bento Discovery Section */}
-      <section className="py-24 px-6 md:px-16 bg-surface-dim border-b-2 border-grid-line">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-12 flex flex-col md:flex-row justify-between items-end gap-6 border-b-2 border-grid-line pb-8">
-            <div>
-              <span className="font-label-caps text-label-caps text-primary mb-2 block uppercase">Curations</span>
-              <h2 className="font-headline-lg text-headline-lg-mobile md:text-[56px] text-on-surface uppercase">The Collection</h2>
+      
+      {/* Main Content Canvas */}
+      <main className="flex-grow pt-[120px] pb-section-gap flex flex-col relative z-10">
+        
+        {/* Hero Section */}
+        <section className="w-full min-h-[80vh] flex flex-col justify-end px-margin-mobile md:px-margin-desktop pb-24 relative mb-section-gap">
+          <div className="absolute inset-0 z-0">
+            <img 
+              alt="Architecture of Night"
+              className="w-full h-full object-cover opacity-60 mix-blend-luminosity" 
+              src="https://lh3.googleusercontent.com/aida-public/AB6AXuAZjsIKYRWHfCf59Gd2O2JRxHXhLSf0hKWEv61YimwDrzcl4JuJy2f1r0JyBfEVf6UVG91WjDUQ-RSgUYnSf82gO_UrJK5hYuoYGRhgpMKrKcC1A8vhSwrlvgrLru1wXYaP3CTNuyVil9v2MF7VkoB3jobFj3Ep_6MH8m_pxhspF75DI1NAHIpMxGcWUKbyBp1H8zX39hKxdDvdqSqI4x4yV6G3iTJMgviIW3nYasqjjyy01ZhoQDOG"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/40 to-transparent"></div>
+          </div>
+          
+          <div className="relative z-10 max-w-7xl">
+            <h1 className="font-display-xl text-display-xl tracking-tighter uppercase leading-none mb-8 text-on-surface md:w-3/4">
+              The <br/> Architecture <br/> of Night
+            </h1>
+            <div className="flex flex-col md:flex-row gap-8 md:items-end">
+              <p className="font-body-md text-body-md text-on-surface-variant max-w-md">
+                A curated exploration of avant-garde spaces and brutalist intersections. Where absence speaks louder than form.
+              </p>
+              <Link 
+                to="/events"
+                className="inline-flex items-center justify-center bg-white text-black rounded-full px-8 py-3 font-label-sm text-label-sm uppercase tracking-widest hover:bg-primary-container hover:text-white transition-colors self-start md:self-auto interactive hover-target"
+              >
+                ENTER THE VOID
+              </Link>
             </div>
-            <button 
-              onClick={() => navigate('/events')}
-              className="font-body-md text-body-md text-on-surface-variant hover:text-primary transition-colors flex items-center gap-2 border border-grid-line px-4 py-2 uppercase tracking-widest text-xs"
-            >
-              View All <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-            </button>
           </div>
+        </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 auto-rows-[minmax(180px,auto)]">
-            {/* Featured Event */}
-            {featuredEvent ? (
-              <Card 
-                interactive 
-                className="md:col-span-8 md:row-span-2 group relative cursor-pointer min-h-[400px]"
-                onClick={() => navigate(`/events/${featuredEvent.id}`)}
-              >
-                <div 
-                  className="absolute inset-0 bg-cover bg-center grayscale group-hover:grayscale-0 transition-all duration-700"
-                  style={{ backgroundImage: `url(${featuredEvent.posterUrl || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCmh7vw1WaniamATAljBayfOwdAnOZu_JkQOxRwV0gu9bLFudErEiC95GtSVE12reVfMCAsjccwBQ6EQPTezim9Os0CydCC_0eY5d85OEFlY4qVOv2LQ7VRSh59jSs_oQUzdbfnPj2rX_fnnljeIYRJ6bzzj-sUyR8vLI1UJFKOUHDDWIZYo6Nlk2dMOXJRKU04sanG7gQEeRq2epzWrx0IMDF9ILVm2w_JkwSiVg0zyIh7QESR6Grc'})` }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-surface-container-lowest via-surface-container-lowest/80 to-transparent"></div>
-                <div className="absolute inset-0 p-8 flex flex-col justify-between z-10">
-                  <div className="flex justify-between items-start">
-                    <Badge className="bg-surface text-on-surface border-2 border-grid-line shadow-[4px_4px_0px_0px_rgba(212,175,55,1)]">Featured</Badge>
-                  </div>
-                  <div className="border-l-4 border-primary pl-4 bg-surface/80 p-4 backdrop-blur-sm border-2 border-grid-line border-l-primary">
-                    <span className="font-label-caps text-label-caps text-primary mb-2 block uppercase">{featuredEvent.category}</span>
-                    <h3 className="font-subheadline-bold text-[32px] text-on-surface mb-2 uppercase">{featuredEvent.title}</h3>
-                    <div className="flex items-center gap-4 text-on-surface-variant font-body-md text-sm uppercase">
-                      <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">calendar_today</span> {new Date(featuredEvent.startTime).toLocaleDateString()}</span>
-                      <span className="flex items-center gap-1"><span className="material-symbols-outlined text-[16px]">location_on</span> {featuredEvent.location}</span>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            ) : (
-              <Card className="md:col-span-8 md:row-span-2 min-h-[400px] flex items-center justify-center border-2 border-grid-line">
-                <p className="text-on-surface-variant font-body-md uppercase tracking-widest">No featured events</p>
-              </Card>
-            )}
-
-            {/* Trending Categories */}
-            <Card className="md:col-span-4 flex flex-col p-6 hover:bg-surface-bright transition-colors border-2 border-grid-line">
-              <div className="flex justify-between items-center mb-6 border-b-2 border-grid-line pb-4">
-                <h4 className="font-subheadline-bold text-subheadline-bold text-on-surface uppercase">Trending</h4>
-                <span className="material-symbols-outlined text-primary text-3xl">trending_up</span>
-              </div>
-              <ul className="space-y-4 flex-grow flex flex-col justify-center">
-                {['Social', 'Academic', 'Arts'].map((cat, idx) => {
-                  const count = publishedEvents.filter(e => e.category === cat).length;
-                  return (
-                    <li key={idx} className="flex items-center justify-between group border-b-2 border-grid-line pb-2">
-                      <span className="font-body-md text-body-md text-on-surface group-hover:text-primary transition-colors uppercase font-bold">{cat}</span>
-                      <span className="text-primary font-label-caps text-sm border border-primary px-2 py-0.5">{count}</span>
-                    </li>
-                  )
-                })}
-              </ul>
-            </Card>
-
-            {/* Upcoming Event */}
-            {publishedEvents[1] && (
-              <Card 
-                interactive 
-                className="md:col-span-4 relative cursor-pointer min-h-[300px] border-2 border-grid-line group"
-                onClick={() => navigate(`/events/${publishedEvents[1].id}`)}
-              >
-                <div 
-                  className="absolute inset-0 bg-cover bg-center grayscale group-hover:grayscale-0 transition-all duration-700" 
-                  style={{ backgroundImage: `url(${publishedEvents[1].posterUrl || 'https://lh3.googleusercontent.com/aida-public/AB6AXuCTzPOhnkpr0G9lAERUmlWKMuXPUSM2sL2CS8czEKTakI_sy0thVOYy8nPMb3tneK14lAkuYyKqNTZGRgINpamwrNHWtbfTBGkuqELZRBxP322VwQXNNGeDHQISbqH2KYSEm6tn67WlPZkpgkYSdD_qQVZmrSftH6q0Ch03toNp-6dAisiI15vxYeBwEqObRUkFF8zy37wBIQwPNtPQZKG4N-MLdjk-8IsCD_1zVrc76aWLnr2PZ5Mm'})` }}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-charcoal-base via-charcoal-base/50 to-transparent"></div>
-                <div className="absolute inset-0 p-6 flex flex-col justify-end z-10 border-t-[8px] border-primary mt-auto bg-surface/90 backdrop-blur-md h-[45%]">
-                  <span className="font-label-caps text-label-caps text-primary mb-1 uppercase">{publishedEvents[1].category}</span>
-                  <h4 className="font-subheadline-bold text-subheadline-bold text-on-surface leading-tight mb-2 uppercase">{publishedEvents[1].title}</h4>
-                  <p className="font-body-md text-body-md text-on-surface-variant text-sm border-l-2 border-grid-line pl-2">{new Date(publishedEvents[1].startTime).toLocaleDateString()}</p>
-                </div>
-              </Card>
-            )}
-
-            {/* Community Stats */}
-            <Card className="md:col-span-8 md:col-start-5 p-8 flex flex-col justify-center relative overflow-hidden border-2 border-grid-line bg-surface">
-              <div className="absolute right-0 bottom-0 opacity-5 pointer-events-none transform translate-x-1/4 translate-y-1/4">
-                <span className="material-symbols-outlined text-[200px]">group</span>
-              </div>
-              <span className="font-label-caps text-label-caps text-primary mb-6 block uppercase border-b-2 border-grid-line pb-4 tracking-widest">Community Pulse</span>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 divide-y-2 md:divide-y-0 md:divide-x-2 divide-grid-line">
-                <div className="pt-4 md:pt-0 md:px-4 flex flex-col items-start">
-                  <div className="font-display-hero text-[48px] text-on-surface mb-1 text-primary">12k+</div>
-                  <div className="font-label-caps text-on-surface-variant uppercase border border-grid-line px-2 py-1 bg-surface-dim">Active Members</div>
-                </div>
-                <div className="pt-4 md:pt-0 md:px-4 flex flex-col items-start">
-                  <div className="font-display-hero text-[48px] text-on-surface mb-1 text-primary">{publishedEvents.length}</div>
-                  <div className="font-label-caps text-on-surface-variant uppercase border border-grid-line px-2 py-1 bg-surface-dim">Curated Events</div>
-                </div>
-                <div className="pt-4 md:pt-0 md:px-4 flex flex-col items-start">
-                  <div className="font-display-hero text-[48px] text-on-surface mb-1 text-primary">50+</div>
-                  <div className="font-label-caps text-on-surface-variant uppercase border border-grid-line px-2 py-1 bg-surface-dim">Cities Worldwide</div>
-                </div>
-              </div>
-            </Card>
+        {/* Asymmetrical Editorial Grid */}
+        <section className="px-margin-mobile md:px-margin-desktop grid grid-cols-1 md:grid-cols-12 gap-gutter mb-section-gap">
+          <div className="md:col-span-5 md:col-start-2 flex flex-col justify-center">
+            <h2 className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg uppercase mb-6">Manifesto</h2>
+            <p className="font-body-md text-body-md text-on-surface-variant">
+              We reject the superfluous. In the stark light of the modern era, true luxury is found in essential geometry and unforgiving contrasts. This is not merely design; it is a declaration of structural purity.
+            </p>
           </div>
-        </div>
-      </section>
-    </div>
+          <div className="md:col-span-4 md:col-start-9 relative h-[60vh] mt-12 md:mt-0 border border-outline-variant/30 group">
+            <img 
+              alt="Structural Purity"
+              className="w-full h-full object-cover grayscale opacity-50 group-hover:opacity-100 transition-opacity duration-700" 
+              src="https://lh3.googleusercontent.com/aida-public/AB6AXuDV3H6OraRHphf0tJt9T9gzXVi6bUa2T-BaXV5n08Cz9qhUwn5Z4vT8Af9B6_266jPZ4oP8DX7s5HJ2eUGATjtKOEH8Iswk0W7MWS7q9WHYOYN00jJcjZ89K9U_RFypKjo97HghSHbRN5QOrGGPhIEq0R3rDZUbfaEn_d8BJa6LokQ-ezMRIXXEWjW4pRwbNKE1AZOtsOruqz1oVKoBpU0qhhbbQWLrUtlyn-_oGF_C2AF2OwqiRtrG"
+            />
+            <div className="absolute bottom-0 left-0 p-4 font-metadata text-metadata uppercase bg-background/80 backdrop-blur-md">01 / STRUCTURAL PURITY</div>
+          </div>
+        </section>
+
+        {/* Typographic Cards / Events List */}
+        <section className="px-margin-mobile md:px-margin-desktop mb-section-gap">
+          <div className="border-t border-outline-variant/20 pt-8 mb-16">
+            <h2 className="font-label-sm text-label-sm uppercase tracking-widest text-on-surface-variant">UPCOMING CONGREGATIONS</h2>
+          </div>
+          <div className="flex flex-col">
+            {publishedEvents.slice(0, 3).map((event, index) => (
+              <Link 
+                key={event.id}
+                to={`/events/${event.id}`}
+                className="group relative py-12 border-b border-outline-variant/10 flex flex-col md:flex-row md:items-center justify-between interactive hover-target hover:bg-surface-container-low transition-colors px-4 -mx-4 md:px-8 md:-mx-8"
+              >
+                <div className="flex items-start gap-8 z-10 relative pointer-events-none">
+                  <span className="font-display-xl text-4xl md:text-6xl text-outline/30 group-hover:text-primary transition-colors">
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                  <div>
+                    <h3 className="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg uppercase group-hover:pl-4 transition-all duration-300">
+                      {event.title}
+                    </h3>
+                    <p className="font-metadata text-metadata text-on-surface-variant mt-2">
+                      {event.category}
+                    </p>
+                  </div>
+                </div>
+                <div className="font-metadata text-metadata uppercase mt-6 md:mt-0 z-10 relative text-right pointer-events-none">
+                  {new Date(event.startTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} <br/>
+                  {new Date(event.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })} - LATE
+                </div>
+                <div className="absolute inset-y-0 right-1/4 w-1/3 hover-reveal-img pointer-events-none z-0 mix-blend-lighten hidden md:block">
+                  <img 
+                    alt={event.title}
+                    className="w-full h-full object-cover" 
+                    src={event.posterUrl || "https://lh3.googleusercontent.com/aida-public/AB6AXuBnrmzkr6KRJT2iHSpngDmF5Ry1Wqlz6S6AK1OxcTFlHkI5gZfTwViAR_oYXzvw9jltE9ZOnktMV3MBVQ1BXKDaSMdcsOfBQ1UtsliJbs0-QwdtUmu3AcCdjokrhydE0DLC6AZ2JDdTjh2ABDqpbWS0XxexNnwcCTNHw8uP_AZ0xuLeMoLZ0LR4eQ7i4sQObuS2PK1iIxFgE6W69pXVPe18LEopaezd_jwHWifLfcJB809-7vbYz0C1"}
+                  />
+                </div>
+              </Link>
+            ))}
+            
+            {publishedEvents.length === 0 && (
+              <div className="py-12 text-center font-metadata text-metadata text-on-surface-variant">
+                NO UPCOMING CONGREGATIONS.
+              </div>
+            )}
+          </div>
+        </section>
+      </main>
+
+      <Footer />
+    </>
   );
 };
 

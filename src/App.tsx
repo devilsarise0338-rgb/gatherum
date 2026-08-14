@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
 
 import Home from './pages/Home';
 import Explore from './pages/Explore';
@@ -19,8 +20,60 @@ import AuthPage from './pages/AuthPage';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
 function App() {
+  useEffect(() => {
+    const cursor = document.getElementById('custom-cursor');
+    if (!cursor) return;
+
+    const moveCursor = (e: MouseEvent) => {
+      cursor.style.left = e.clientX + 'px';
+      cursor.style.top = e.clientY + 'px';
+    };
+
+    if (window.matchMedia('(pointer: fine)').matches) {
+      document.addEventListener('mousemove', moveCursor);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', moveCursor);
+    };
+  }, []);
+
+  useEffect(() => {
+    // We add mouseenter/mouseleave events globally via event delegation or MutationObserver.
+    // A simpler approach for React is to rely on global mouseover/mouseout events.
+    const cursor = document.getElementById('custom-cursor');
+    if (!cursor) return;
+
+    const handleMouseOver = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('a') || target.closest('button') || target.closest('.hover-target') || target.closest('.interactive')) {
+        if (target.closest('.hover-target')) {
+          cursor.classList.add('hover-solid');
+        } else {
+          cursor.classList.add('hover');
+        }
+      }
+    };
+
+    const handleMouseOut = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('a') || target.closest('button') || target.closest('.hover-target') || target.closest('.interactive')) {
+        cursor.classList.remove('hover');
+        cursor.classList.remove('hover-solid');
+      }
+    };
+
+    document.addEventListener('mouseover', handleMouseOver);
+    document.addEventListener('mouseout', handleMouseOut);
+
+    return () => {
+      document.removeEventListener('mouseover', handleMouseOver);
+      document.removeEventListener('mouseout', handleMouseOut);
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-background text-on-background font-body-md">
+    <div className="flex-grow flex flex-col w-full min-h-screen">
       <Routes>
         {/* Core Pages */}
         <Route path="/" element={<Home />} />

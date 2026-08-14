@@ -169,6 +169,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [user, events, registrations]);
 
   const registerForEvent = useCallback(async (eventId: string) => {
+    const targetEvent = events.find(e => e.id === eventId);
+    if (user && targetEvent && targetEvent.organizerId === user.id) {
+      alert("Hosts cannot register for their own events.");
+      return;
+    }
+
     await RegistrationService.register(eventId);
     const regs = await RegistrationService.getRegistrations();
     setRegistrations(regs);
@@ -176,9 +182,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (updatedEvent) {
       setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
     }
-  }, []);
+  }, [user, events]);
 
   const joinWaitlist = useCallback(async (eventId: string) => {
+    const targetEvent = events.find(e => e.id === eventId);
+    if (user && targetEvent && targetEvent.organizerId === user.id) {
+      alert("Hosts cannot waitlist for their own events.");
+      return;
+    }
+
     await RegistrationService.register(eventId);
     const regs = await RegistrationService.getRegistrations();
     setRegistrations(regs);
@@ -186,7 +198,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (updatedEvent) {
       setEvents(prev => prev.map(e => e.id === eventId ? updatedEvent : e));
     }
-  }, []);
+  }, [user, events]);
 
   const cancelRegistration = useCallback(async (eventId: string) => {
     await RegistrationService.cancelRegistration(eventId);

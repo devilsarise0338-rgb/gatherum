@@ -22,52 +22,64 @@ export const Navbar: React.FC = () => {
     return '/events';
   };
 
+  const handleAccountClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (user) {
+      logout();
+    } else {
+      navigate('/auth');
+    }
+  };
+
   return (
-    <nav className="fixed top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-5xl rounded-none border-2 border-grid-line z-50 shadow-[0px_10px_30px_rgba(0,0,0,0.5)] bg-surface/90 backdrop-blur-md">
-      <div className="flex justify-between items-center px-8 py-4">
-        <Link to="/" className="font-display-hero text-subheadline-bold tracking-tighter text-primary uppercase">
-          Gatherum
-        </Link>
-        <div className="hidden md:flex gap-8 items-center">
-          <NavLink to="/events" currentPath={path}>Explore</NavLink>
-          {user && user.role !== 'admin' && user.role !== 'organizer' && (
-             <NavLink to="/volunteer" currentPath={path}>Volunteer</NavLink>
-          )}
-          {user && (user.role === 'organizer' || user.role === 'admin') && (
-            <NavLink to="/organizer" currentPath={path}>Host</NavLink>
-          )}
-          {user && (
-            <NavLink to={getDashboardPath()} currentPath={path}>Dashboard</NavLink>
-          )}
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="hidden md:inline-block [perspective:1000px] group">
-            {user ? (
-              <button 
-                onClick={() => logout()}
-                className="relative flex items-center justify-center text-on-surface-variant hover:text-error transition-all duration-300 group-hover:[transform:rotateX(10deg)_rotateY(10deg)] group-active:scale-95 transform-gpu [transform-style:preserve-3d] px-6 py-2 rounded-none overflow-hidden bg-surface-container-low/50 border-2 border-transparent hover:border-grid-line uppercase font-label-caps"
-              >
-                <div className="absolute inset-0 bg-surface-container-high opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
-                <span className="relative z-10 text-body-md">Logout</span>
-              </button>
-            ) : (
-              <button 
-                onClick={() => navigate('/auth')}
-                className="relative flex items-center justify-center text-primary hover:text-primary transition-all duration-300 group-hover:[transform:rotateX(10deg)_rotateY(10deg)] group-active:scale-95 transform-gpu [transform-style:preserve-3d] px-6 py-2 rounded-none overflow-hidden bg-surface-container-low/50 border-2 border-primary hover:border-grid-line uppercase font-label-caps"
-              >
-                <div className="absolute inset-0 bg-surface-container-high opacity-0 group-hover:opacity-10 transition-opacity duration-300"></div>
-                <span className="relative z-10 text-body-md">Login</span>
-              </button>
+    <>
+      {/* TopNavBar (Desktop) */}
+      <nav className="hidden md:flex justify-between items-center w-full px-margin-desktop py-4 fixed top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-outline-variant/30 transition-transform duration-300">
+        <div className="flex items-center gap-12">
+          <Link to="/" className="font-headline-lg text-headline-lg tracking-tighter text-on-surface hover:opacity-70 transition-opacity">
+            GATHERUM NOIR
+          </Link>
+          <div className="flex items-center gap-8">
+            <NavLink to="/events" currentPath={path}>EXPLORE</NavLink>
+            {user && (
+              <NavLink to={getDashboardPath()} currentPath={path}>DASHBOARD</NavLink>
             )}
-          </div>
-          <div className="md:hidden inline-block group">
-            <button className="relative flex items-center justify-center text-on-surface-variant p-2 border-2 border-grid-line rounded-none bg-surface-container-low/50 uppercase">
-              <span className="material-symbols-outlined">menu</span>
-            </button>
+            <NavLink to="/" currentPath={path}>HOME</NavLink>
           </div>
         </div>
-      </div>
-    </nav>
+        <div className="flex items-center gap-6">
+          <Link to="/events" className="material-symbols-outlined cursor-pointer hover:opacity-70 transition-opacity hover-target" style={{ fontSize: '24px' }}>
+            search
+          </Link>
+          <button 
+            onClick={handleAccountClick}
+            className="font-label-sm text-label-sm uppercase tracking-[0.2em] text-on-surface hover:opacity-70 transition-opacity hover-target"
+          >
+            {user ? 'LOGOUT' : 'ACCOUNT'}
+          </button>
+        </div>
+      </nav>
+
+      {/* BottomNavBar (Mobile) */}
+      <nav className="md:hidden fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex justify-around items-center p-2 bg-surface-container/60 backdrop-blur-2xl w-[90%] max-w-md rounded-full border border-outline-variant/20 shadow-[0_10px_40px_rgba(0,0,0,0.5)]">
+        <Link to="/events" className={cn("flex flex-col items-center justify-center px-4 py-2 hover-target transition-all", path === '/events' ? 'text-primary' : 'text-on-surface-variant')}>
+          <span className="material-symbols-outlined mb-1 text-[20px]">explore</span>
+          <span className="font-metadata text-[10px] uppercase tracking-widest hidden">EXPLORE</span>
+        </Link>
+        <Link to="/" className={cn("flex flex-col items-center justify-center px-4 py-2 hover-target transition-all", path === '/' ? 'text-primary' : 'text-on-surface-variant')}>
+          <span className="material-symbols-outlined mb-1 text-[20px]">home</span>
+          <span className="font-metadata text-[10px] uppercase tracking-widest hidden">HOME</span>
+        </Link>
+        <Link to={user ? getDashboardPath() : '/auth'} className={cn("flex flex-col items-center justify-center rounded-full px-6 py-2 scale-110 shadow-lg shadow-primary/20 transition-all duration-200 hover-target", path.includes('/student') || path.includes('/organizer') || path.includes('/admin') ? 'bg-primary text-on-primary' : 'bg-surface-variant text-on-surface')}>
+          <span className="material-symbols-outlined mb-1 text-[20px]" style={path.includes('/student') || path.includes('/organizer') || path.includes('/admin') ? { fontVariationSettings: "'FILL' 1" } : {}}>dashboard</span>
+          <span className="font-metadata text-[8px] uppercase tracking-widest mt-1 hidden">DASHBOARD</span>
+        </Link>
+        <button onClick={handleAccountClick} className="flex flex-col items-center justify-center text-on-surface-variant px-4 py-2 hover:text-primary transition-all hover-target">
+          <span className="material-symbols-outlined mb-1 text-[20px]">{user ? 'logout' : 'login'}</span>
+          <span className="font-metadata text-[10px] uppercase tracking-widest hidden">{user ? 'LOGOUT' : 'LOGIN'}</span>
+        </button>
+      </nav>
+    </>
   );
 };
 
@@ -77,10 +89,10 @@ function NavLink({ to, currentPath, children }: { to: string; currentPath: strin
     <Link
       to={to}
       className={cn(
-        'transition-colors duration-300 uppercase font-label-caps tracking-widest',
+        'font-label-sm text-label-sm uppercase tracking-[0.2em] transition-all hover-target',
         isActive
-          ? 'text-primary border-b-2 border-primary pb-1'
-          : 'text-on-surface-variant hover:text-primary'
+          ? 'text-primary border-b border-primary pb-1 scale-95'
+          : 'text-on-surface-variant hover:text-on-surface hover:opacity-70'
       )}
     >
       {children}

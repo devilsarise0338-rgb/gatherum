@@ -1,22 +1,20 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="border-t-4 border-grid-line bg-surface py-12 px-6 md:px-16 mt-auto">
-      <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
-        <div>
-          <div className="font-display-hero text-3xl font-bold text-primary tracking-tighter uppercase mb-4">GATHERUM</div>
-          <p className="font-body-md text-on-surface-variant max-w-sm">
-            Curating exceptional experiences. Brutalist, uncompromising event management.
-          </p>
-        </div>
-        
-        <div className="flex gap-8 font-label-caps uppercase text-on-surface-variant">
-          <a href="#" className="hover:text-primary transition-colors border-b-2 border-transparent hover:border-primary pb-1">About</a>
-          <a href="#" className="hover:text-primary transition-colors border-b-2 border-transparent hover:border-primary pb-1">Terms</a>
-          <a href="#" className="hover:text-primary transition-colors border-b-2 border-transparent hover:border-primary pb-1">Privacy</a>
-          <a href="#" className="hover:text-primary transition-colors border-b-2 border-transparent hover:border-primary pb-1">Support</a>
-        </div>
+    <footer className="w-full relative overflow-hidden pt-section-gap pb-12 bg-background border-t border-outline-variant/10 flex flex-col items-center gap-12 px-margin-desktop mt-auto z-10">
+      <div className="flex gap-8 z-10 font-metadata text-metadata uppercase tracking-[0.3em]">
+        <Link to="#" className="text-on-surface-variant hover:text-primary transition-colors hover-target">PRIVACY</Link>
+        <Link to="#" className="text-on-surface-variant hover:text-primary transition-colors hover-target">TERMS</Link>
+        <Link to="#" className="text-on-surface-variant hover:text-primary transition-colors hover-target">SHIPPING</Link>
+        <Link to="#" className="text-on-surface-variant hover:text-primary transition-colors hover-target">CONTACT</Link>
+      </div>
+      <p className="font-metadata text-metadata uppercase tracking-[0.3em] text-on-surface-variant z-10 text-center">
+        © 2024 GATHERUM NOIR. ALL RIGHTS RESERVED.
+      </p>
+      <div className="font-display-xl text-display-xl opacity-5 pointer-events-none absolute bottom-0 left-0 w-full text-center leading-none text-on-surface select-none whitespace-nowrap overflow-hidden">
+        GATHERUM NOIR
       </div>
     </footer>
   );
