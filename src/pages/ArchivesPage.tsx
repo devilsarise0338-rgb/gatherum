@@ -1,32 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Event } from '../types';
 import EventCard from '../components/EventCard';
-import { Search, Filter, X } from 'lucide-react';
+import { Search, X, ArrowLeft } from 'lucide-react';
 
-const CATEGORIES = ['All', 'Technical', 'Cultural', 'Sports', 'Workshop', 'Seminar', 'Competition', 'Social', 'Other'];
-
-export default function EventsPage() {
+export default function ArchivesPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('All');
+  const navigate = useNavigate();
 
   useEffect(() => {
-    async function fetchEvents() {
+    async function fetchArchives() {
       setLoading(true);
-      let q = supabase
+      const { data } = await supabase
         .from('events')
         .select('*, registrations(count)')
-        .eq('is_unpublished', false)
-        .eq('is_archived', false)
-        .order('start_time', { ascending: true })
-        .gte('start_time', new Date(Date.now() - 86400000).toISOString());
+        .eq('is_archived', true)
+        .order('start_time', { ascending: false });
 
-      if (category !== 'All') q = q.eq('category', category);
-
-      const { data } = await q;
       if (data) {
         const evts = data.map((e: any) => ({
           ...e,
@@ -36,8 +29,8 @@ export default function EventsPage() {
       }
       setLoading(false);
     }
-    fetchEvents();
-  }, [category]);
+    fetchArchives();
+  }, []);
 
   const filtered = events.filter(e =>
     !search ||
@@ -55,10 +48,14 @@ export default function EventsPage() {
         padding: '3rem 0',
       }}>
         <div className="container">
-          <div className="tag" style={{ background: 'var(--yellow)', marginBottom: '0.75rem' }}>Browse</div>
-          <h1 style={{ fontSize: '2.5rem', fontWeight: 700, marginBottom: '0.5rem' }}>Campus Events</h1>
+          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--white)', marginBottom: '1rem' }} onClick={() => navigate('/events')}>
+            <ArrowLeft size={16} /> Back to Active Events
+          </button>
+          <br />
+          <div className="tag" style={{ background: 'var(--ink-muted)', marginBottom: '0.75rem', color: 'white' }}>Historical</div>
+          <h1 style={{ fontSize: '2.5rem', fontWeight: 700, marginBottom: '0.5rem' }}>Past Events Archive</h1>
           <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '1rem' }}>
-            Discover what's happening around you.
+            A library of completed Gatherum events.
           </p>
         </div>
       </div>
@@ -77,7 +74,7 @@ export default function EventsPage() {
             <input
               className="input"
               style={{ paddingLeft: '2.25rem' }}
-              placeholder="Search events..."
+              placeholder="Search historical events..."
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
@@ -89,27 +86,6 @@ export default function EventsPage() {
                 <X size={14} />
               </button>
             )}
-          </div>
-
-          {/* Category */}
-          <select
-            className="select"
-            style={{ width: 'auto', minWidth: 140 }}
-            value={category}
-            onChange={e => setCategory(e.target.value)}
-          >
-            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-          </select>
-
-          {/* Archives Link */}
-          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
-            <Link
-              to="/archives"
-              className="btn btn-ghost btn-sm"
-              style={{ fontWeight: 600, color: 'var(--ink)' }}
-            >
-              📚 Past Events
-            </Link>
           </div>
         </div>
 
@@ -124,14 +100,14 @@ export default function EventsPage() {
             background: 'var(--white)', border: '2px solid var(--border)',
             borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)',
           }}>
-            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🔍</div>
-            <h3 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>No events found</h3>
-            <p style={{ color: 'var(--ink-muted)' }}>Try a different search or category.</p>
+            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🗃️</div>
+            <h3 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>No archived events</h3>
+            <p style={{ color: 'var(--ink-muted)' }}>Check back later once events are completed.</p>
           </div>
         ) : (
           <>
             <div style={{ marginBottom: '1rem', fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', color: 'var(--ink-muted)' }}>
-              {filtered.length} event{filtered.length !== 1 ? 's' : ''} found
+              {filtered.length} archived event{filtered.length !== 1 ? 's' : ''} found
             </div>
             <div className="grid-3">
               {filtered.map(ev => <EventCard key={ev.id} event={ev} />)}

@@ -6,6 +6,7 @@ import { Registration, Event } from '../types';
 import EventCard from '../components/EventCard';
 import { Calendar, Ticket, User, Bell } from 'lucide-react';
 import toast from 'react-hot-toast';
+import QRCode from 'react-qr-code';
 
 export default function StudentDashboard() {
   const { profile } = useAuth();
@@ -185,9 +186,14 @@ export default function StudentDashboard() {
                       </div>
                       <div className="ticket-body">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-                          <div>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '0.25rem' }}>TICKET ID</div>
-                            <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.9375rem', letterSpacing: '0.05em' }}>{reg.ticket_id}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                            <div style={{ background: 'white', padding: '0.5rem', borderRadius: '8px', border: '2px solid var(--border)' }}>
+                              <QRCode value={reg.ticket_id} size={80} />
+                            </div>
+                            <div>
+                              <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '0.25rem' }}>TICKET ID</div>
+                              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.9375rem', letterSpacing: '0.05em' }}>{reg.ticket_id}</div>
+                            </div>
                           </div>
                           <span className={`badge ${reg.status === 'attended' ? 'badge-ink' : 'badge-yellow'}`}>
                             {reg.status === 'attended' ? '✓ Attended' : '● Registered'}

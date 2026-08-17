@@ -59,8 +59,40 @@ export default function OrganizerEventWizard() {
     }
   }, [id]);
 
+  const [uploading, setUploading] = useState(false);
+
   function update(field: keyof EventForm, value: string | boolean) {
     setForm(f => ({ ...f, [field]: value }));
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 250 * 1024) {
+      toast.error('Poster must be 250 KB or smaller.');
+      return;
+    }
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Only JPG, PNG, or WebP images are allowed.');
+      return;
+    }
+
+    setUploading(true);
+    const ext = file.name.split('.').pop() || 'png';
+    const filename = `${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+    const path = `events/${profile!.id}/${filename}`;
+
+    const { error } = await supabase.storage.from('images').upload(path, file);
+    setUploading(false);
+
+    if (error) {
+      toast.error('Upload failed: ' + error.message);
+    } else {
+      const { data } = supabase.storage.from('images').getPublicUrl(path);
+      update('poster_url', data.publicUrl);
+      toast.success('Poster uploaded!');
+    }
   }
 
   async function handleSave(publish = false) {
@@ -161,13 +193,30 @@ export default function OrganizerEventWizard() {
             </div>
           </div>
 
-          {/* Poster URL */}
+          {/* Poster Upload & URL */}
           <div className="form-group">
-            <label className="label">Poster URL</label>
-            <input className="input" placeholder="https://..." value={form.poster_url} onChange={e => update('poster_url', e.target.value)} />
+            <label className="label">Event Poster</label>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <label className="btn" style={{ background: 'var(--ink)', color: 'var(--white)', cursor: 'pointer' }}>
+                {uploading ? 'Uploading...' : '📁 Upload Image'}
+                <input type="file" accept="image/jpeg, image/png, image/webp" style={{ display: 'none' }} onChange={handleFileUpload} disabled={uploading} />
+              </label>
+              <div style={{ fontSize: '0.75rem', color: 'var(--ink-muted)' }}>
+                Max 250 KB. JPG, PNG, WebP.
+              </div>
+            </div>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ink-muted)' }}>OR PASTE URL</div>
+              <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+            </div>
+
+            <input className="input" placeholder="Direct Image URL (Not a Canva share link)" value={form.poster_url} onChange={e => update('poster_url', e.target.value)} />
+            
             {form.poster_url && (
               <img src={form.poster_url} alt="Poster preview" onError={e => (e.currentTarget.style.display = 'none')}
-                style={{ marginTop: '0.75rem', maxHeight: 160, borderRadius: 'var(--radius-sm)', border: '2px solid var(--border)', objectFit: 'cover', display: 'block' }} />
+                style={{ marginTop: '1rem', maxHeight: 200, borderRadius: 'var(--radius-sm)', border: '2px solid var(--border)', objectFit: 'cover', display: 'block' }} />
             )}
           </div>
 

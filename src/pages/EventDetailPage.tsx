@@ -229,7 +229,8 @@ export default function EventDetailPage() {
             {/* Tags + title */}
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.875rem' }}>
               {event.category && <span className="tag">{event.category}</span>}
-              {isPast && <span className="badge badge-ink">Ended</span>}
+              {isPast && !event.is_archived && <span className="badge badge-ink">Ended</span>}
+              {event.is_archived && <span className="badge badge-ink">🗃️ Archived</span>}
               {event.is_unpublished && <span className="badge badge-yellow">Draft</span>}
             </div>
 

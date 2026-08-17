@@ -8,6 +8,7 @@ import Navbar from './components/Navbar';
 // Pages
 import HomePage from './pages/HomePage';
 import EventsPage from './pages/EventsPage';
+import ArchivesPage from './pages/ArchivesPage';
 import EventDetailPage from './pages/EventDetailPage';
 import AuthPage from './pages/AuthPage';
 import StudentDashboard from './pages/StudentDashboard';
@@ -67,6 +68,7 @@ function AppRoutes() {
         {/* Public */}
         <Route path="/" element={<HomePage />} />
         <Route path="/events" element={<EventsPage />} />
+        <Route path="/archives" element={<ArchivesPage />} />
         <Route path="/events/:id" element={<EventDetailPage />} />
         <Route
           path="/auth"
