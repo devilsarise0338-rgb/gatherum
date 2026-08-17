@@ -241,11 +241,12 @@ export default function EventDetailPage() {
             {/* Organizer */}
             {(event as any).organizer && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', padding: '0.75rem', background: 'var(--cream)', border: '2px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
-                <SafeImage
-                  src={(event as any).organizer.avatar_url}
+                <img
+                  src={(event as any).organizer.avatar_url || `https://api.dicebear.com/7.x/shapes/svg?seed=${event.organizer_id}`}
                   alt="Organizer"
                   className="avatar avatar-sm"
-                  fallbackEmoji="👤"
+                  style={{ background: 'var(--white)' }}
+                  onError={e => (e.currentTarget.style.display = 'none')}
                 />
                 <div>
                   <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{(event as any).organizer.full_name ?? 'Organizer'}</div>

@@ -39,7 +39,8 @@
     "recharts": "^3.10.1",
     "tailwind-merge": "^3.6.0",
     "three": "^0.185.1",
-    "vite": "^6.2.3"
+    "vite": "^6.2.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

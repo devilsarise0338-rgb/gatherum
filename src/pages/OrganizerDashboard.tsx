@@ -3,16 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Event } from '../types';
-import { Plus, QrCode, BarChart2, Users, Calendar } from 'lucide-react';
+import { Plus, QrCode, BarChart2, Users, Calendar, Download } from 'lucide-react';
 import SafeImage from '../components/SafeImage';
 import toast from 'react-hot-toast';
+
+import { exportEventParticipants } from '../lib/exportExcel';
 
 export default function OrganizerDashboard() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'published' | 'drafts'>('published');
+  const [tab, setTab] = useState<'published' | 'drafts' | 'archived'>('published');
+  const [exportingId, setExportingId] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -57,9 +60,21 @@ export default function OrganizerDashboard() {
     }
   }
 
-  const published = events.filter(e => !e.is_unpublished);
-  const drafts = events.filter(e => e.is_unpublished);
-  const shown = tab === 'published' ? published : drafts;
+  async function handleExport(ev: Event) {
+    if (exportingId || !profile?.id) return;
+    setExportingId(ev.id);
+    const res = await exportEventParticipants(ev.id, ev.title || 'Event', profile.id);
+    if (res.error) {
+      toast.error(res.error);
+    }
+    setExportingId(null);
+  }
+
+  const published = events.filter(e => !e.is_unpublished && !e.is_archived);
+  const drafts = events.filter(e => e.is_unpublished && !e.is_archived);
+  const archived = events.filter(e => e.is_archived);
+  
+  const shown = tab === 'published' ? published : tab === 'drafts' ? drafts : archived;
 
   const totalRegs = events.reduce((a, e) => a + (e.registration_count ?? 0), 0);
 
@@ -109,6 +124,9 @@ export default function OrganizerDashboard() {
           <button className={`tab ${tab === 'drafts' ? 'active' : ''}`} onClick={() => setTab('drafts')}>
             Drafts ({drafts.length})
           </button>
+          <button className={`tab ${tab === 'archived' ? 'active' : ''}`} onClick={() => setTab('archived')}>
+            Archived ({archived.length})
+          </button>
         </div>
 
         {loading ? (
@@ -120,7 +138,11 @@ export default function OrganizerDashboard() {
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>📅</div>
             <h3 style={{ fontWeight: 700, marginBottom: '0.5rem' }}>No {tab} events</h3>
             <p style={{ color: 'var(--ink-muted)', marginBottom: '1.5rem' }}>
-              {tab === 'published' ? 'Create and publish your first event.' : 'All your events are published!'}
+              {tab === 'published' 
+                ? 'Create and publish your first event.' 
+                : tab === 'drafts' 
+                  ? 'All your events are published!' 
+                  : 'No archived events yet.'}
             </p>
             <button className="btn btn-primary" onClick={() => navigate('/organizer/events/new')}>
               <Plus size={16} /> Create Event
@@ -165,6 +187,14 @@ export default function OrganizerDashboard() {
                   </button>
                   <button className="btn btn-dark btn-sm" onClick={() => navigate(`/organizer/checkin/${ev.id}`)}>
                     <QrCode size={14} /> Check-in
+                  </button>
+                  <button 
+                    className="btn btn-ghost btn-sm" 
+                    onClick={() => handleExport(ev)}
+                    disabled={exportingId === ev.id}
+                  >
+                    <Download size={14} /> 
+                    {exportingId === ev.id ? 'Exporting...' : 'Export Excel ↓'}
                   </button>
                   <button
                     className={`btn btn-sm ${ev.is_unpublished ? 'btn-secondary' : 'btn-ghost'}`}

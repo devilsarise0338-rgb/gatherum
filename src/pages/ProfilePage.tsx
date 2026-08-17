@@ -17,7 +17,6 @@ export default function ProfilePage() {
     branch: '',
     year_of_study: '',
     phone_number: '',
-    avatar_url: '',
     public_rsvp: true,
   });
   const [saving, setSaving] = useState(false);
@@ -30,7 +29,6 @@ export default function ProfilePage() {
         branch: profile.branch ?? '',
         year_of_study: profile.year_of_study?.toString() ?? '',
         phone_number: profile.phone_number ?? '',
-        avatar_url: profile.avatar_url ?? '',
         public_rsvp: profile.public_rsvp,
       });
     }
@@ -45,7 +43,6 @@ export default function ProfilePage() {
       branch: form.branch || null,
       year_of_study: form.year_of_study ? parseInt(form.year_of_study) : null,
       phone_number: form.phone_number || null,
-      avatar_url: form.avatar_url || null,
       public_rsvp: form.public_rsvp,
       profile_completed: !!(form.full_name && form.roll_number),
     };
@@ -61,8 +58,7 @@ export default function ProfilePage() {
 
   if (!profile) return <div className="page-loader"><div className="spinner" /></div>;
 
-  const initials = (profile.full_name ?? profile.email ?? 'U')
-    .split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  const generatedAvatar = `https://api.dicebear.com/7.x/shapes/svg?seed=${profile.id}`;
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--off-white)' }}>
@@ -70,18 +66,12 @@ export default function ProfilePage() {
       <div style={{ background: 'var(--ink)', color: 'var(--white)', borderBottom: '2px solid var(--border)', padding: '2.5rem 0' }}>
         <div className="container">
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-            {form.avatar_url ? (
-              <img
-                src={form.avatar_url}
-                alt="Avatar"
-                className="avatar avatar-lg"
-                onError={e => (e.currentTarget.style.display = 'none')}
-              />
-            ) : (
-              <div className="avatar avatar-lg" style={{ background: 'var(--red)', color: 'var(--white)', fontSize: '1.5rem' }}>
-                {initials}
-              </div>
-            )}
+            <img
+              src={generatedAvatar}
+              alt="Avatar"
+              className="avatar avatar-lg"
+              style={{ background: 'var(--white)' }}
+            />
             <div>
               <div className="tag" style={{ background: profile.role === 'admin' ? 'var(--red)' : profile.role === 'organizer' ? 'var(--yellow)' : 'var(--white)', marginBottom: '0.375rem' }}>
                 {profile.role}
@@ -130,17 +120,6 @@ export default function ProfilePage() {
               <label className="label">Phone Number</label>
               <input className="input" type="tel" placeholder="+91 9876543210" value={form.phone_number}
                 onChange={e => setForm(f => ({ ...f, phone_number: e.target.value }))} />
-            </div>
-
-            <div className="form-group">
-              <label className="label">Avatar URL</label>
-              <input className="input" placeholder="https://…/avatar.jpg" value={form.avatar_url}
-                onChange={e => setForm(f => ({ ...f, avatar_url: e.target.value }))} />
-              {form.avatar_url && (
-                <img src={form.avatar_url} alt="Avatar preview" className="avatar avatar-md"
-                  style={{ marginTop: '0.75rem' }}
-                  onError={e => (e.currentTarget.style.display = 'none')} />
-              )}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', padding: '0.875rem', background: 'var(--off-white)', border: '2px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
