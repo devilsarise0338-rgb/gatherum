@@ -105,6 +105,7 @@ export default function EventDetailPage() {
   const now = new Date();
   const startTime = new Date(event.start_time);
   const isPast = startTime < now;
+  const isDeadlinePast = event.registration_deadline ? new Date(event.registration_deadline) < now : false;
   const isFull = regCount >= event.capacity;
   const activeStatus = myReg?.status;
 
@@ -115,6 +116,14 @@ export default function EventDetailPage() {
       <div className="card" style={{ padding: '1.5rem', textAlign: 'center' }}>
         <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🏁</div>
         <p style={{ fontWeight: 700 }}>This event has ended.</p>
+      </div>
+    );
+
+    if (!activeStatus && isDeadlinePast) return (
+      <div className="card" style={{ padding: '1.5rem', textAlign: 'center' }}>
+        <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>⏰</div>
+        <p style={{ fontWeight: 700 }}>Registration Closed</p>
+        <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)', marginTop: '0.25rem' }}>The deadline has passed.</p>
       </div>
     );
 
@@ -265,6 +274,7 @@ export default function EventDetailPage() {
                 { icon: <Clock size={16} />, label: 'Time', value: `${fmtTime(event.start_time)}${event.end_time ? ' – ' + fmtTime(event.end_time) : ''}` },
                 { icon: <MapPin size={16} />, label: 'Location', value: event.location ?? 'TBA' },
                 { icon: <Users size={16} />, label: 'Capacity', value: `${regCount} / ${event.capacity} registered` },
+                ...(event.registration_deadline ? [{ icon: <Clock size={16} />, label: 'Deadline', value: `${fmt(event.registration_deadline)} at ${fmtTime(event.registration_deadline)}` }] : []),
               ].map(d => (
                 <div key={d.label} className="card" style={{ padding: '1rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--red)', marginBottom: '0.375rem', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>

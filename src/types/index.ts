@@ -31,6 +31,7 @@ export interface Event {
   capacity: number;
   poster_url: string | null;
   is_unpublished: boolean;
+  registration_deadline: string | null;
   created_at: string;
   updated_at: string;
   // joined fields

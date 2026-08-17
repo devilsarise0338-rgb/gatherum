@@ -17,12 +17,14 @@ interface EventForm {
   capacity: string;
   poster_url: string;
   is_unpublished: boolean;
+  registration_deadline: string;
 }
 
 const EMPTY: EventForm = {
   title: '', description: '', category: 'Technical',
-  start_time: '', end_time: '', location: '', capacity: '100',
-  poster_url: '', is_unpublished: true,
+  start_time: '', end_time: '', location: '',
+  capacity: '50', poster_url: '', is_unpublished: false,
+  registration_deadline: ''
 };
 
 export default function OrganizerEventWizard() {
@@ -49,6 +51,7 @@ export default function OrganizerEventWizard() {
             capacity: String(data.capacity),
             poster_url: data.poster_url ?? '',
             is_unpublished: data.is_unpublished,
+            registration_deadline: data.registration_deadline?.slice(0, 16) ?? '',
           });
         }
         setLoading(false);
@@ -78,6 +81,7 @@ export default function OrganizerEventWizard() {
       poster_url: form.poster_url || null,
       is_unpublished: publish ? false : form.is_unpublished,
       organizer_id: profile!.id,
+      registration_deadline: form.registration_deadline ? new Date(form.registration_deadline).toISOString() : null,
     };
 
     if (isNew) {
@@ -145,10 +149,16 @@ export default function OrganizerEventWizard() {
             </div>
           </div>
 
-          {/* Location */}
-          <div className="form-group">
-            <label className="label">Location / Venue</label>
-            <input className="input" placeholder="Seminar Hall, Block A" value={form.location} onChange={e => update('location', e.target.value)} />
+          {/* Location & Registration Deadline */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+            <div>
+              <label className="label">Location / Venue</label>
+              <input className="input" placeholder="Seminar Hall, Block A" value={form.location} onChange={e => update('location', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Registration Deadline</label>
+              <input className="input" type="datetime-local" value={form.registration_deadline} onChange={e => update('registration_deadline', e.target.value)} />
+            </div>
           </div>
 
           {/* Poster URL */}
