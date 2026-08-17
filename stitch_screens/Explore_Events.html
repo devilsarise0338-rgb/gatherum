@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Gatherum - Browse Events</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined';
+            font-weight: normal;
+            font-style: normal;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            -webkit-font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        .tilt-card {
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease;
+        }
+        .tilt-card:hover {
+            transform: perspective(1000px) rotateX(2deg) rotateY(2deg) scale3d(1.02, 1.02, 1.02);
+            box-shadow: 0px 10px 30px rgba(0, 0, 0, 0.08);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-container": "#6063ee",
+                        "warning": "#FBBF24",
+                        "primary": "#003fb1",
+                        "on-tertiary-fixed-variant": "#802a00",
+                        "outline": "#737686",
+                        "background": "#f8f9fa",
+                        "surface-container-low": "#f3f4f5",
+                        "ink": "#080808",
+                        "surface-bright": "#f8f9fa",
+                        "secondary": "#4648d4",
+                        "secondary-fixed": "#e1e0ff",
+                        "on-tertiary-fixed": "#380d00",
+                        "on-tertiary-container": "#ffd4c5",
+                        "on-secondary-fixed-variant": "#2f2ebe",
+                        "on-primary-fixed-variant": "#003dab",
+                        "primary-container": "#1a56db",
+                        "tertiary-container": "#ad3b00",
+                        "secondary-fixed-dim": "#c0c1ff",
+                        "surface-container-highest": "#e1e3e4",
+                        "tertiary": "#852b00",
+                        "surface-tint": "#1353d8",
+                        "surface-dim": "#d9dadb",
+                        "error": "#EF4444",
+                        "on-surface": "#191c1d",
+                        "on-error": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "university-blue": "#005696",
+                        "tertiary-fixed": "#ffdbcf",
+                        "inverse-primary": "#b5c4ff",
+                        "on-tertiary": "#ffffff",
+                        "outline-variant": "#c3c5d7",
+                        "on-primary-fixed": "#00174d",
+                        "on-secondary-container": "#fffbff",
+                        "surface-container": "#edeeef",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "on-secondary-fixed": "#07006c",
+                        "on-background": "#191c1d",
+                        "on-surface-variant": "#434654",
+                        "surface-container-high": "#e7e8e9",
+                        "primary-fixed": "#dbe1ff",
+                        "primary-fixed-dim": "#b5c4ff",
+                        "surface": "#f8f9fa",
+                        "on-primary-container": "#d4dcff",
+                        "on-error-container": "#93000a",
+                        "success": "#10B981",
+                        "surface-variant": "#e1e3e4",
+                        "error-container": "#ffdad6",
+                        "inverse-surface": "#2e3132",
+                        "inverse-on-surface": "#f0f1f2",
+                        "tertiary-fixed-dim": "#ffb59a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "stack-lg": "32px",
+                        "margin-desktop": "40px",
+                        "margin-mobile": "16px",
+                        "gutter": "24px",
+                        "stack-sm": "8px",
+                        "stack-md": "16px",
+                        "base": "4px"
+                    },
+                    "fontFamily": {
+                        "label-bold": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "label-caps": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "display": ["Inter"],
+                        "mono-data": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-bold": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "700" }],
+                        "body-sm": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "label-caps": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "display": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "mono-data": ["14px", { "lineHeight": "20px", "letterSpacing": "0px", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased min-h-screen pt-[64px]">
+<!-- Shared Component: TopNavBar -->
+<nav class="fixed w-full top-0 z-50 bg-surface shadow-[0px_4px_20px_rgba(0,0,0,0.05)]">
+<div class="flex justify-between items-center w-full px-margin-desktop h-16 max-w-[1440px] mx-auto">
+<!-- Brand -->
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-university-blue" style="font-variation-settings: 'FILL' 1;">hub</span>
+<span class="font-display text-headline-md text-university-blue">Gatherum</span>
+</div>
+<!-- Navigation Links -->
+<div class="hidden md:flex items-center gap-stack-lg h-full">
+<a class="h-full flex items-center px-2 text-primary font-label-bold border-b-2 border-primary scale-95 transition-transform duration-200" href="#">
+                    Explore
+                </a>
+<a class="h-full flex items-center px-2 text-on-surface-variant font-label-bold hover:text-university-blue transition-colors" href="#">
+                    My Tickets
+                </a>
+<a class="h-full flex items-center px-2 text-on-surface-variant font-label-bold hover:text-university-blue transition-colors" href="#">
+                    Following
+                </a>
+</div>
+<!-- Trailing Actions -->
+<div class="flex items-center gap-stack-md">
+<div class="hidden lg:flex relative items-center">
+<span class="material-symbols-outlined absolute left-3 text-on-surface-variant">search</span>
+<input class="pl-10 pr-4 py-2 bg-surface-container-lowest border border-outline-variant rounded-full text-body-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary w-64 transition-all" placeholder="Search events..." type="text"/>
+</div>
+<button class="font-label-bold text-label-bold text-university-blue hover:text-primary transition-colors">
+                    Login
+                </button>
+</div>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="max-w-[1440px] mx-auto px-margin-mobile md:px-margin-desktop py-stack-lg">
+<!-- Header Section -->
+<header class="mb-stack-lg flex flex-col gap-stack-sm">
+<h1 class="font-display text-display text-on-surface">Browse Events</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">Discover upcoming academic conferences, vibrant cultural festivals, and high-energy sports tournaments happening on campus.</p>
+</header>
+<!-- Filters Section -->
+<section class="bg-surface rounded-xl p-stack-md mb-stack-lg shadow-[0px_4px_20px_rgba(0,0,0,0.05)] border border-outline-variant/30 flex flex-col md:flex-row gap-gutter">
+<!-- Search -->
+<div class="flex-1 relative">
+<label class="sr-only">Search</label>
+<div class="relative flex items-center h-[56px]">
+<span class="material-symbols-outlined absolute left-4 text-outline">search</span>
+<input class="w-full h-full pl-12 pr-4 bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all" placeholder="Search by event name or keyword..." type="text"/>
+</div>
+</div>
+<!-- Category Dropdown -->
+<div class="w-full md:w-64 relative">
+<label class="sr-only">Category</label>
+<div class="relative flex items-center h-[56px]">
+<span class="material-symbols-outlined absolute left-4 text-outline">category</span>
+<select class="w-full h-full pl-12 pr-10 bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all cursor-pointer">
+<option value="">All Categories</option>
+<option value="tech">Technology</option>
+<option value="cultural">Cultural</option>
+<option value="sports">Sports</option>
+</select>
+<span class="material-symbols-outlined absolute right-4 text-outline pointer-events-none">expand_more</span>
+</div>
+</div>
+<!-- Date Picker -->
+<div class="w-full md:w-64 relative">
+<label class="sr-only">Date</label>
+<div class="relative flex items-center h-[56px]">
+<span class="material-symbols-outlined absolute left-4 text-outline">calendar_today</span>
+<input class="w-full h-full pl-12 pr-4 bg-surface-container-lowest border border-outline-variant rounded-lg font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all" type="date"/>
+</div>
+</div>
+</section>
+<!-- Event Grid -->
+<section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-gutter">
+<!-- Event Card 1 -->
+<article class="bg-surface rounded-xl flex flex-col overflow-hidden shadow-[0px_4px_20px_rgba(0,0,0,0.05)] border border-outline-variant/20 tilt-card cursor-pointer">
+<div class="relative h-48 w-full overflow-hidden bg-surface-container-highest">
+<img class="w-full h-full object-cover" data-alt="A modern university auditorium illuminated with cool blue lighting during a technology conference. A large digital screen displays abstract data visualizations, and rows of attentive students are visible in the foreground. The aesthetic is sleek, academic, and forward-looking." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBAt96ms40Sl7owDeYSIKU7Htjlg33BrJeT1wD8694SHUimZSmNa_N4CdU5DOZDMhLclmLmRSBItZ7vZHr3BZihvehq2NvlzfpxeQGxILxYJ1yiIHoOdYQCEuYehbPi-e5mG5wPQ9jHbSyw4kLRUDj87_texEoplD_OKZtjEKFAvkuYpUu6Sd7OUpIh_n5uxSaSN80sGUGUdGG9L6-1pj-3IYFA2v_LW05YxaCAb2YE-MqQ-fe5PjPR"/>
+<div class="absolute top-4 left-4 bg-surface-container-lowest/90 backdrop-blur-sm px-3 py-1 rounded-full border border-outline-variant/30">
+<span class="font-label-caps text-label-caps text-primary tracking-wider uppercase">Tech</span>
+</div>
+</div>
+<div class="p-stack-md flex flex-col flex-1 gap-stack-sm">
+<h3 class="font-headline-md text-headline-md text-on-surface line-clamp-2">Future of AI Symposium 2024</h3>
+<div class="flex flex-col gap-2 mt-auto pt-stack-sm">
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">calendar_month</span>
+<span>Oct 15 • 9:00 AM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">location_on</span>
+<span>Main Auditorium</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Event Card 2 -->
+<article class="bg-surface rounded-xl flex flex-col overflow-hidden shadow-[0px_4px_20px_rgba(0,0,0,0.05)] border border-outline-variant/20 tilt-card cursor-pointer">
+<div class="relative h-48 w-full overflow-hidden bg-surface-container-highest">
+<img class="w-full h-full object-cover" data-alt="A vibrant outdoor cultural festival on a university campus during golden hour. Students in diverse, colorful traditional attire are dancing on a modern stage. Warm, inviting light bathes the scene, highlighting the energetic and inclusive community atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1Blcu6ZYhpc76pOHWDy4ZldDcEp9QCfqVUU1ypkzxRotwiHBBtM8DQJ-hUIjGxIaOTSdICQyVVvxLe2kbr9p3sUMHf71QHV-ql2hCSHITAWDhSHTGb3673GFXS0E0TnoXWraUDtgaDUiA0i3A_7rk5FAckshitzkEfOIm50fsbXKe3PK3tFG8gszQuD_b8QHX7-ct4zc9Z6uAzIYGlesGbdaFi-5ih89aecDYevddWkt9_RWRwtn9"/>
+<div class="absolute top-4 left-4 bg-surface-container-lowest/90 backdrop-blur-sm px-3 py-1 rounded-full border border-outline-variant/30">
+<span class="font-label-caps text-label-caps text-tertiary tracking-wider uppercase">Cultural</span>
+</div>
+</div>
+<div class="p-stack-md flex flex-col flex-1 gap-stack-sm">
+<h3 class="font-headline-md text-headline-md text-on-surface line-clamp-2">Global Rhythms Fest</h3>
+<div class="flex flex-col gap-2 mt-auto pt-stack-sm">
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">calendar_month</span>
+<span>Oct 22 • 5:00 PM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">location_on</span>
+<span>Central Courtyard</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Event Card 3 -->
+<article class="bg-surface rounded-xl flex flex-col overflow-hidden shadow-[0px_4px_20px_rgba(0,0,0,0.05)] border border-outline-variant/20 tilt-card cursor-pointer">
+<div class="relative h-48 w-full overflow-hidden bg-surface-container-highest">
+<img class="w-full h-full object-cover" data-alt="A dynamic action shot of a basketball game inside a state-of-the-art indoor campus arena. Bright stadium lights illuminate the polished wooden floor as a player goes for a layup. The atmosphere is tense and competitive, captured in high-definition clarity." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_Pd-ebclpRfwJpNtzWt-1GjTvK1N5tbcomdgEqyrA9zgvge0Om0BQbHCEtRqmmEVKPfrGS10hZBd3pq2Hjrj0kzLs9Wpp1NaeKWn_U3rnEpDCDlxL7SGPEA3adQJ2JkNbtIydl4UJs6bZ-_8IUaiUHikLeCAH5KfUjq6gpD1yhN8T1a4WFPTlg-SkjGwJCIpKP7YQnGF9LtTZu8nNsvMEmFbkxNyofpYDgl_-eiaIby990Eg-teaA"/>
+<div class="absolute top-4 left-4 bg-surface-container-lowest/90 backdrop-blur-sm px-3 py-1 rounded-full border border-outline-variant/30">
+<span class="font-label-caps text-label-caps text-warning tracking-wider uppercase">Sports</span>
+</div>
+</div>
+<div class="p-stack-md flex flex-col flex-1 gap-stack-sm">
+<h3 class="font-headline-md text-headline-md text-on-surface line-clamp-2">Inter-College Basketball Finals</h3>
+<div class="flex flex-col gap-2 mt-auto pt-stack-sm">
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">calendar_month</span>
+<span>Nov 05 • 7:30 PM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">location_on</span>
+<span>Sports Complex Arena</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Event Card 4 -->
+<article class="bg-surface rounded-xl flex flex-col overflow-hidden shadow-[0px_4px_20px_rgba(0,0,0,0.05)] border border-outline-variant/20 tilt-card cursor-pointer">
+<div class="relative h-48 w-full overflow-hidden bg-surface-container-highest">
+<img class="w-full h-full object-cover" data-alt="A collaborative coding hackathon in a bright, modern university library space. Groups of students huddle over laptops with glowing screens, surrounded by whiteboards covered in diagrams. The aesthetic is clean, industrious, and focused, characterized by natural light and crisp white surfaces." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDPPex4fdmmitd9ZyWlG4kwGhJTxhbEjoin_9g3g1NRbLJtcNhHo8JJTIixYoEKJILXWXWc4wHrSEjpN4TTVjsc67C7vve4k9HFMzEtkT0sRPoNJJF4sATNV1NdjuIxH7zb92pZvX2ohibzNJ6wwLRUx3EFSJFnIlzfTzUam9TwHj2pOBEXrzsYj_Jhfy97ry3AAIpkUfbrzqaqeYnlLux-pUaCEolIs052TmQS6nKz42TBsYyV3TCU"/>
+<div class="absolute top-4 left-4 bg-surface-container-lowest/90 backdrop-blur-sm px-3 py-1 rounded-full border border-outline-variant/30">
+<span class="font-label-caps text-label-caps text-primary tracking-wider uppercase">Tech</span>
+</div>
+</div>
+<div class="p-stack-md flex flex-col flex-1 gap-stack-sm">
+<h3 class="font-headline-md text-headline-md text-on-surface line-clamp-2">CodeRed 24-Hour Hackathon</h3>
+<div class="flex flex-col gap-2 mt-auto pt-stack-sm">
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">calendar_month</span>
+<span>Nov 12 • 8:00 AM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">location_on</span>
+<span>Innovation Lab</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Event Card 5 -->
+<article class="bg-surface rounded-xl flex flex-col overflow-hidden shadow-[0px_4px_20px_rgba(0,0,0,0.05)] border border-outline-variant/20 tilt-card cursor-pointer">
+<div class="relative h-48 w-full overflow-hidden bg-surface-container-highest">
+<img class="w-full h-full object-cover" data-alt="An elegant evening art exhibition in a sleek campus gallery. Minimalist white walls display contemporary student artwork, illuminated by precise track lighting. The mood is sophisticated and quiet, emphasizing the high-quality tonal hierarchy of the space." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDVBt3oe5PtlKjXMw_FqX7PvkBZaUNN8BPYXcIQMJ9NNWCoFrNKWtzyGL_9GS69SI4I5Mc3znRXdGxh96BzSKMuRlBNRnAz_7TID5FxAJw_szicD_gJgdJAQCoLiBmWpIOhrZfA3UsOpGwhFJcUQ5z7nNPhlX4XhRWnT7JrkfbWZKRBiXkfGyX7jr4iJ2tkzK2nTZcVZDIL7BJx4pTHy153z9IXxK1ym-6fX90PFpBNJ5WyCcp8vMj-"/>
+<div class="absolute top-4 left-4 bg-surface-container-lowest/90 backdrop-blur-sm px-3 py-1 rounded-full border border-outline-variant/30">
+<span class="font-label-caps text-label-caps text-tertiary tracking-wider uppercase">Cultural</span>
+</div>
+</div>
+<div class="p-stack-md flex flex-col flex-1 gap-stack-sm">
+<h3 class="font-headline-md text-headline-md text-on-surface line-clamp-2">Annual Fine Arts Showcase</h3>
+<div class="flex flex-col gap-2 mt-auto pt-stack-sm">
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">calendar_month</span>
+<span>Dec 01 • 6:00 PM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">location_on</span>
+<span>Creative Arts Building</span>
+</div>
+</div>
+</div>
+</article>
+<!-- Event Card 6 -->
+<article class="bg-surface rounded-xl flex flex-col overflow-hidden shadow-[0px_4px_20px_rgba(0,0,0,0.05)] border border-outline-variant/20 tilt-card cursor-pointer">
+<div class="relative h-48 w-full overflow-hidden bg-surface-container-highest">
+<img class="w-full h-full object-cover" data-alt="A wide angle shot of a vibrant esports tournament setup on a large stage. Glowing monitors, specialized gaming chairs, and dramatic purple and blue LED lighting define the high-energy, tech-forward environment. An excited audience is blurred in the background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAn8DmZXsW2ZL7BnPmU1bqfQg4JZmYk51xxnSig1lV0UxRJIjKMXBoT7MO2cRBpeZJTYpuk6jL_2BK6jqH0EPkxjTtolZTIvDjroxuOXmfyP3UDcJPlEDGLswx53rirPxwtDOyCkgpV7zMJCtqLyMxiTZheUPsbdwgKK4Lr0Ez3WyQTTdQR3PgMlqLA0rSJRXkfFztY3aoSop70QdQXufHoAPup28kd7ZwO8mSRjg4OYbmTX4OXUMR4"/>
+<div class="absolute top-4 left-4 bg-surface-container-lowest/90 backdrop-blur-sm px-3 py-1 rounded-full border border-outline-variant/30">
+<span class="font-label-caps text-label-caps text-warning tracking-wider uppercase">Sports</span>
+</div>
+</div>
+<div class="p-stack-md flex flex-col flex-1 gap-stack-sm">
+<h3 class="font-headline-md text-headline-md text-on-surface line-clamp-2">University Esports Championship</h3>
+<div class="flex flex-col gap-2 mt-auto pt-stack-sm">
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">calendar_month</span>
+<span>Dec 10 • 10:00 AM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[18px]">location_on</span>
+<span>Student Union Hall</span>
+</div>
+</div>
+</div>
+</article>
+</section>
+</main>
+</body></html>

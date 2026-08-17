@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>My Tickets - Gatherum</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "tertiary-container": "#ad3b00",
+                      "on-secondary-container": "#fffbff",
+                      "surface-container-lowest": "#ffffff",
+                      "success": "#10B981",
+                      "outline-variant": "#c3c5d7",
+                      "on-primary-fixed": "#00174d",
+                      "on-error": "#ffffff",
+                      "on-primary-container": "#d4dcff",
+                      "primary": "#003fb1",
+                      "warning": "#FBBF24",
+                      "inverse-surface": "#2e3132",
+                      "on-secondary-fixed": "#07006c",
+                      "on-tertiary": "#ffffff",
+                      "secondary-fixed": "#e1e0ff",
+                      "on-tertiary-fixed-variant": "#802a00",
+                      "surface-variant": "#e1e3e4",
+                      "inverse-on-surface": "#f0f1f2",
+                      "outline": "#737686",
+                      "on-primary-fixed-variant": "#003dab",
+                      "on-tertiary-fixed": "#380d00",
+                      "university-blue": "#005696",
+                      "surface-container-highest": "#e1e3e4",
+                      "tertiary": "#852b00",
+                      "tertiary-fixed-dim": "#ffb59a",
+                      "on-tertiary-container": "#ffd4c5",
+                      "primary-fixed": "#dbe1ff",
+                      "secondary-container": "#6063ee",
+                      "on-primary": "#ffffff",
+                      "secondary-fixed-dim": "#c0c1ff",
+                      "secondary": "#4648d4",
+                      "surface-container-low": "#f3f4f5",
+                      "on-secondary-fixed-variant": "#2f2ebe",
+                      "on-surface": "#191c1d",
+                      "surface": "#f8f9fa",
+                      "on-background": "#191c1d",
+                      "tertiary-fixed": "#ffdbcf",
+                      "on-error-container": "#93000a",
+                      "ink": "#080808",
+                      "surface-dim": "#d9dadb",
+                      "inverse-primary": "#b5c4ff",
+                      "surface-container": "#edeeef",
+                      "error": "#EF4444",
+                      "surface-bright": "#f8f9fa",
+                      "primary-fixed-dim": "#b5c4ff",
+                      "background": "#f8f9fa",
+                      "surface-tint": "#1353d8",
+                      "on-secondary": "#ffffff",
+                      "error-container": "#ffdad6",
+                      "on-surface-variant": "#434654",
+                      "primary-container": "#1a56db",
+                      "surface-container-high": "#e7e8e9"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "stack-md": "16px",
+                      "gutter": "24px",
+                      "margin-desktop": "40px",
+                      "margin-mobile": "16px",
+                      "stack-sm": "8px",
+                      "base": "4px",
+                      "stack-lg": "32px"
+              },
+              "fontFamily": {
+                      "label-bold": ["Inter"],
+                      "headline-md": ["Inter"],
+                      "headline-lg": ["Inter"],
+                      "mono-data": ["Inter"],
+                      "headline-lg-mobile": ["Inter"],
+                      "label-caps": ["Inter"],
+                      "body-sm": ["Inter"],
+                      "display": ["Inter"],
+                      "body-md": ["Inter"],
+                      "body-lg": ["Inter"]
+              },
+              "fontSize": {
+                      "label-bold": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                      "mono-data": ["14px", {"lineHeight": "20px", "letterSpacing": "0px", "fontWeight": "500"}],
+                      "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                      "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                      "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "display": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}]
+              }
+            }
+          }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .ticket-cutout {
+            position: relative;
+            background: radial-gradient(circle at left center, transparent 12px, #ffffff 13px) top left/50% 100% no-repeat,
+                        radial-gradient(circle at right center, transparent 12px, #ffffff 13px) top right/50% 100% no-repeat;
+        }
+        .ticket-cutout::before, .ticket-cutout::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            width: 24px;
+            height: 24px;
+            background-color: #f3f4f5; /* surface-container-low */
+            border-radius: 50%;
+            transform: translateY(-50%);
+            box-shadow: inset 0px 4px 6px rgba(0,0,0,0.05);
+            z-index: 10;
+        }
+        .ticket-cutout::before { left: -12px; }
+        .ticket-cutout::after { right: -12px; }
+        
+        .ticket-dash {
+            border-top: 2px dashed #c3c5d7;
+            position: relative;
+        }
+    </style>
+</head>
+<body class="bg-surface-container-low text-on-surface font-body-md min-h-screen selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopNavBar JSON Injection -->
+<header class="bg-surface shadow-[0px_4px_20px_rgba(0,0,0,0.05)] sticky top-0 z-50">
+<div class="flex justify-between items-center w-full px-margin-mobile md:px-margin-desktop h-16 max-w-[1440px] mx-auto">
+<!-- Brand -->
+<div class="flex items-center gap-4">
+<span class="font-display text-headline-md text-university-blue">Gatherum</span>
+</div>
+<!-- Desktop Navigation -->
+<nav class="hidden md:flex items-center gap-8 h-full">
+<a class="text-on-surface-variant font-label-bold hover:text-university-blue transition-colors h-full flex items-center px-2" href="#">Explore</a>
+<a class="text-primary font-label-bold border-b-2 border-primary hover:text-university-blue transition-colors h-full flex items-center px-2" href="#">My Tickets</a>
+<a class="text-on-surface-variant font-label-bold hover:text-university-blue transition-colors h-full flex items-center px-2" href="#">Following</a>
+</nav>
+<!-- Search & Actions -->
+<div class="flex items-center gap-4">
+<div class="hidden md:flex items-center bg-surface-container px-3 py-2 rounded-full border border-outline-variant focus-within:border-primary-container transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-body-sm text-on-surface placeholder:text-on-surface-variant ml-2 w-48" placeholder="Search events..." type="text"/>
+</div>
+<button class="md:hidden p-2 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">search</span>
+</button>
+<div class="w-8 h-8 rounded-full overflow-hidden border border-outline-variant">
+<img alt="Student Profile" class="w-full h-full object-cover" data-alt="A close up portrait photo of a young adult college student with a bright smile, wearing a casual blue hoodie, well lit, professional headshot style against a light grey background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAl4wdvYTfROjXHIR9O4G7S5CPZTQ5_b2lCIGf3pQRUESYJjs0B6EYlys27MZezL9JgDEtyLlhDh4e9ry8kyUdDkXO2VG0AsnAit6h6_t0xvYANNzjNti0W6-P0AmEf2PBd4oc6lgWldWYqh_FL6l8j0gXmvkWCXgpii9SonhiMT6QNT4YXlhA1nqrYu1NoIx78Gz4O4MynRu9FwbalrntV6Fd0fCsuxZNHBhr9qGtTuERM-zjNQJ51"/>
+</div>
+</div>
+</div>
+</header>
+<main class="max-w-[1440px] mx-auto px-margin-mobile md:px-margin-desktop py-stack-lg">
+<!-- Page Header & Tabs -->
+<div class="mb-stack-lg">
+<h1 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-stack-md">My Tickets</h1>
+<div class="flex gap-6 border-b border-outline-variant w-full overflow-x-auto no-scrollbar">
+<button class="pb-3 border-b-2 border-primary text-primary font-label-bold text-label-bold whitespace-nowrap px-1 transition-colors hover:text-university-blue">Upcoming (3)</button>
+<button class="pb-3 border-b-2 border-transparent text-on-surface-variant font-label-bold text-label-bold whitespace-nowrap px-1 transition-colors hover:text-on-surface hover:border-outline">Waitlisted (1)</button>
+<button class="pb-3 border-b-2 border-transparent text-on-surface-variant font-label-bold text-label-bold whitespace-nowrap px-1 transition-colors hover:text-on-surface hover:border-outline">Past (12)</button>
+</div>
+</div>
+<!-- Ticket Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-gutter">
+<!-- Active Ticket (Bento/Glassmorphism hybrid emphasis) -->
+<div class="bg-surface rounded-xl shadow-[0px_10px_30px_rgba(0,0,0,0.08)] overflow-hidden flex flex-col md:flex-row relative group hover:scale-[1.01] transition-transform duration-300 border border-primary-fixed">
+<div class="absolute top-4 right-4 z-10 bg-success/10 text-success px-3 py-1 rounded-full font-label-caps text-label-caps backdrop-blur-sm border border-success/20 flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> Ready
+                </div>
+<!-- Poster Side -->
+<div class="w-full md:w-2/5 h-48 md:h-auto relative">
+<img alt="Tech Symposium 2024" class="w-full h-full object-cover" data-alt="A vibrant digital poster design for a Tech Symposium. The image features glowing neon blue and purple circuit board patterns over a dark background. Bold modern typography is subtly integrated. High quality, crisp, tech-forward aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCsR3m69ou53gg1CEkV5LHK0lsDivNVu5fzdMDgzPmf5Png2slcnN443wpRUGS2I6qaPFOYK4L573gtg2yFQ4qcUBpEF5rRIoisWwjdm_phiE6HMg96FUgdybbiVJqew6DaecVfFgJE6MCWN3Ye7iGzxrIsQSkDkmsSuOHucDrutOu9-86G-lWKnIWi2hP1F9sPfQ1cB0zsBkAXe4A33KzJNo7QpDd7qOTRqw3hjtjMn5KNoCRe1uz0"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+<div class="absolute bottom-4 left-4 text-white">
+<div class="font-label-caps text-label-caps text-primary-fixed-dim mb-1">Tech &amp; Engineering</div>
+</div>
+</div>
+<!-- Details Side -->
+<div class="p-6 w-full md:w-3/5 flex flex-col justify-between bg-surface ticket-cutout">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-2">Tech Symposium 2024</h2>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm mb-3">
+<span class="material-symbols-outlined text-[18px]">calendar_today</span>
+<span>Oct 15, 2024 • 9:00 AM - 5:00 PM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm mb-4">
+<span class="material-symbols-outlined text-[18px]">location_on</span>
+<span>Main Auditorium, North Campus</span>
+</div>
+</div>
+<div class="ticket-dash pt-4 mt-2 flex items-center justify-between">
+<div>
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-1">Ticket Type</div>
+<div class="font-mono-data text-mono-data text-on-surface">General Admission</div>
+</div>
+<button class="bg-primary text-on-primary font-label-bold text-label-bold px-4 py-2 rounded-lg hover:bg-university-blue transition-colors shadow-sm flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">qr_code_scanner</span>
+                            View Ticket
+                        </button>
+</div>
+</div>
+</div>
+<!-- Standard Ticket 1 -->
+<div class="bg-surface rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] overflow-hidden flex flex-col md:flex-row relative group hover:-translate-y-1 hover:shadow-[0px_10px_30px_rgba(0,0,0,0.08)] transition-all duration-300">
+<div class="w-full md:w-2/5 h-48 md:h-auto relative">
+<img alt="Campus Acoustic Night" class="w-full h-full object-cover" data-alt="A warm, inviting poster for a Campus Acoustic Night. The image features a softly lit acoustic guitar leaning against a stool in a cozy campus cafe setting. String lights blur in the background. Autumn color palette, calm mood." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDOOhQ_gXGslBmw7XFmJizveuh2Htk3Y5Q8Sqs0ryE3tSKDrx0xqFFlJiHOwr9K_Jp7JtioQNwSkq3H8GQ5oUMW2YDDqtWqf7l2JCpzMeOERgLWGclLCBKhkYc6e9k3uyuBxBXOsWzOz82GA99hqB2DAp3io7Vy4ad2svmWLzWZjQbAGse3Rixdh0cRuT6qLvjxzjoZ1SNTCnCJVJG0raXm9afmL1sXniDNePhEtg4eK9Imf6lnBwyG"/>
+</div>
+<div class="p-6 w-full md:w-3/5 flex flex-col justify-between bg-surface ticket-cutout">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-2">Acoustic Night</h2>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm mb-3">
+<span class="material-symbols-outlined text-[18px]">calendar_today</span>
+<span>Oct 18, 2024 • 7:00 PM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm mb-4">
+<span class="material-symbols-outlined text-[18px]">location_on</span>
+<span>Student Union Cafe</span>
+</div>
+</div>
+<div class="ticket-dash pt-4 mt-2 flex items-center justify-between">
+<div>
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-1">Seat</div>
+<div class="font-mono-data text-mono-data text-on-surface">Free Seating</div>
+</div>
+<button class="border-2 border-primary-container text-primary font-label-bold text-label-bold px-4 py-2 rounded-lg hover:bg-primary-container hover:text-on-primary-container transition-colors">
+                            View
+                        </button>
+</div>
+</div>
+</div>
+<!-- Standard Ticket 2 -->
+<div class="bg-surface rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] overflow-hidden flex flex-col md:flex-row relative group hover:-translate-y-1 hover:shadow-[0px_10px_30px_rgba(0,0,0,0.08)] transition-all duration-300">
+<div class="w-full md:w-2/5 h-48 md:h-auto relative">
+<img alt="Basketball Finals" class="w-full h-full object-cover" data-alt="An energetic sports graphic for an Inter-College Basketball Final. A basketball mid-air near a hoop, heavily stylized with dynamic motion blur and bright university colors. High contrast, exciting atmosphere, stadium lights in the background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcSUhlU5fvGAU8vrql-Lf-DllTUVI8lQWG9fxKLKsjh4pxMsJDjF8n4Zl8cOdDPyiXiWERwQlQMicLBa1Swg5axFpmVmPk7ACQ8bj3hHp3n3Fajx6KJyazN8JBb7FEeCRDJ7wzyyygA-3u-bcUwaD0DFZA42fw7cX5Dy--AsOj5N21RLhxbA17A7YukszOg5zGBiDIEKeYNllQvlFI0x68sqX1ZGgzRWJMV_Auy0otTaXS5YSabRSY"/>
+</div>
+<div class="p-6 w-full md:w-3/5 flex flex-col justify-between bg-surface ticket-cutout">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-2">Basketball Finals</h2>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm mb-3">
+<span class="material-symbols-outlined text-[18px]">calendar_today</span>
+<span>Oct 22, 2024 • 4:00 PM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm mb-4">
+<span class="material-symbols-outlined text-[18px]">location_on</span>
+<span>Sports Complex</span>
+</div>
+</div>
+<div class="ticket-dash pt-4 mt-2 flex items-center justify-between">
+<div>
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-1">Section</div>
+<div class="font-mono-data text-mono-data text-on-surface">Block B, Row 4</div>
+</div>
+<button class="border-2 border-primary-container text-primary font-label-bold text-label-bold px-4 py-2 rounded-lg hover:bg-primary-container hover:text-on-primary-container transition-colors">
+                            View
+                        </button>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar JSON Injection (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-margin-mobile py-stack-sm bg-surface shadow-[0px_-4px_20px_rgba(0,0,0,0.05)] rounded-t-xl">
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-colors p-2">
+<span class="material-symbols-outlined mb-1">search</span>
+<span class="font-label-caps text-label-caps">Explore</span>
+</button>
+<button class="flex flex-col items-center justify-center text-primary p-2">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">confirmation_number</span>
+<span class="font-label-caps text-label-caps">Tickets</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-colors p-2">
+<span class="material-symbols-outlined mb-1">favorite</span>
+<span class="font-label-caps text-label-caps">Following</span>
+</button>
+<button class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-colors p-2">
+<span class="material-symbols-outlined mb-1">person</span>
+<span class="font-label-caps text-label-caps">Profile</span>
+</button>
+</nav>
+</body></html>

@@ -1,139 +1,165 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { Navbar } from '../components/layout/Navbar';
-import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
+import { supabase } from '../lib/supabase';
+import toast from 'react-hot-toast';
+import { Loader2, Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
-export const AuthPage: React.FC = () => {
-  const { login, loginWithGoogle, user, authError, clearAuthError, isLoading } = useAuth();
+type Mode = 'signin' | 'signup';
+
+export default function AuthPage() {
   const navigate = useNavigate();
-
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [mode, setMode] = useState<Mode>('signin');
   const [email, setEmail] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
-  const [localError, setLocalError] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
 
-  // Redirect if already logged in
-  useEffect(() => {
-    if (user) {
-      if (user.role === 'admin') navigate('/admin');
-      else if (user.role === 'organizer') navigate('/organizer');
-      else if (user.role === 'student') navigate('/student');
-      else navigate('/events');
-    }
-  }, [user, navigate]);
+  const allowedDomain = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? '@poornima.org';
 
-  const getErrorMessage = () => {
-    if (localError) return localError;
-    switch (authError) {
-      case 'invalid_email': return 'INVALID EMAIL FORMAT.';
-      case 'domain_restricted': return 'ACCESS RESTRICTED. USE YOUR INSTITUTE EMAIL.';
-      case 'signups_disabled': return 'SIGNUPS ARE CURRENTLY DISABLED.';
-      case 'user_banned': return 'THIS ACCOUNT HAS BEEN BANNED.';
-      case 'unknown': return 'AN ERROR OCCURRED. TRY AGAIN.';
-      default: return null;
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLocalError(null);
-    clearAuthError();
-    setIsSubmitting(true);
-    setMagicLinkSent(false);
+    setLoading(true);
 
-    const result = await login(email);
-    setIsSubmitting(false);
-
-    if (result.success) {
-      setMagicLinkSent(true);
+    if (mode === 'signup') {
+      if (!email.endsWith(allowedDomain)) {
+        toast.error(`Only ${allowedDomain} emails are allowed.`);
+        setLoading(false);
+        return;
+      }
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) toast.error(error.message);
+      else { setSent(true); toast.success('Check your email to confirm your account!'); }
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) toast.error(error.message);
+      else navigate('/');
     }
-  };
+    setLoading(false);
+  }
 
-  const errorMessage = getErrorMessage();
-
-  return (
-    <div className="min-h-screen flex flex-col bg-background selection:bg-primary selection:text-on-primary">
-      <Navbar />
-      
-      <main className="flex-grow pt-32 pb-32 px-6 md:px-16 flex items-center justify-center relative">
-        <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(to_right,#2A2A2A_1px,transparent_1px),linear-gradient(to_bottom,#2A2A2A_1px,transparent_1px)] bg-[size:4rem_4rem] opacity-20"></div>
-        
-        <div className="w-full max-w-md relative z-10 bg-surface border-4 border-grid-line p-8 shadow-[8px_8px_0_0_#2A2A2A]">
-          <div className="mb-8">
-            <h1 className="font-display-hero text-4xl text-on-surface uppercase tracking-tight mb-2">
-              {mode === 'signin' ? 'Access Portal' : 'Join Gatherum'}
-            </h1>
-            <p className="font-body-md text-on-surface-variant uppercase tracking-widest text-xs border-l-2 border-primary pl-2">
-              {mode === 'signin' ? 'Authenticate with your identity' : 'Create a new identity'}
-            </p>
-          </div>
-
-          {errorMessage && (
-            <div className="bg-error text-on-error p-3 mb-6 border-2 border-grid-line font-label-caps flex items-center gap-2">
-              <span className="w-2 h-2 bg-on-error animate-pulse border border-on-error"></span>
-              {errorMessage}
-            </div>
-          )}
-
-          {magicLinkSent ? (
-            <div className="bg-primary/20 text-on-surface p-4 border-2 border-primary mb-6 text-center">
-              <h3 className="font-subheadline-bold text-xl uppercase mb-2">Transmission Sent</h3>
-              <p className="font-body-md">Check your email for the magic link to access your account.</p>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <Input
-                label="Email Address"
-                type="email"
-                placeholder="you@poornima.org"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                disabled={isSubmitting || isLoading}
-                required
-              />
-              
-              <Button 
-                className="w-full shadow-[4px_4px_0_0_#2A2A2A]"
-                disabled={isSubmitting || isLoading}
-                type="submit"
-              >
-                {isSubmitting ? 'Transmitting...' : 'Continue via Magic Link'}
-              </Button>
-            </form>
-          )}
-
-          <div className="mt-8 pt-6 border-t-2 border-grid-line">
-            <Button 
-              variant="outline"
-              className="w-full mb-4 shadow-[4px_4px_0_0_#2A2A2A] flex justify-center items-center gap-2"
-              onClick={() => loginWithGoogle()}
-              disabled={isSubmitting || isLoading}
-            >
-              Google Authentication
-            </Button>
-
-            <p className="text-center font-body-sm text-on-surface-variant uppercase tracking-wider text-xs">
-              {mode === 'signin' ? 'No identity?' : 'Already identified?'}
-              <button 
-                onClick={() => {
-                  setMode(mode === 'signin' ? 'signup' : 'signin');
-                  setLocalError(null);
-                  clearAuthError();
-                  setMagicLinkSent(false);
-                }}
-                className="ml-2 text-primary hover:underline underline-offset-4 font-bold"
-              >
-                {mode === 'signin' ? 'Initialize here.' : 'Access here.'}
-              </button>
-            </p>
-          </div>
-        </div>
-      </main>
+  if (sent) return (
+    <div style={{ minHeight: '100vh', background: 'var(--off-white)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div className="card" style={{ padding: '2.5rem', maxWidth: 440, width: '100%', textAlign: 'center' }}>
+        <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>📬</div>
+        <h2 style={{ fontWeight: 700, fontSize: '1.5rem', marginBottom: '0.5rem' }}>Check Your Inbox</h2>
+        <p style={{ color: 'var(--ink-muted)', marginBottom: '1.5rem' }}>
+          We sent a confirmation email to <strong>{email}</strong>. Click the link to activate your account.
+        </p>
+        <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => { setSent(false); setMode('signin'); }}>
+          Go to Sign In
+        </button>
+      </div>
     </div>
   );
-};
 
-export default AuthPage;
+  return (
+    <div style={{
+      minHeight: '100vh', background: 'var(--off-white)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '2rem',
+    }}>
+      {/* Background decor */}
+      <div style={{
+        position: 'fixed', top: 0, right: 0, width: '40%', height: '100vh',
+        background: 'var(--red)', clipPath: 'polygon(20% 0, 100% 0, 100% 100%, 0% 100%)',
+        opacity: 0.07, pointerEvents: 'none',
+      }} />
+      <div style={{
+        position: 'fixed', bottom: '-10%', left: '-5%', width: 300, height: 300,
+        background: 'var(--yellow)', borderRadius: '50%', opacity: 0.15,
+        pointerEvents: 'none', border: '2px solid var(--border)',
+      }} />
+
+      <div style={{ width: '100%', maxWidth: 440, position: 'relative' }}>
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <div style={{
+            fontFamily: 'var(--font-mono)', fontSize: '2rem', fontWeight: 700,
+            color: 'var(--red)', marginBottom: '0.25rem',
+          }}>
+            Gatherum
+          </div>
+          <p style={{ color: 'var(--ink-muted)', fontSize: '0.9rem' }}>
+            {mode === 'signin' ? 'Welcome back! Sign in to continue.' : 'Join your campus community.'}
+          </p>
+        </div>
+
+        {/* Card */}
+        <div className="card" style={{ padding: '2rem' }}>
+          {/* Tabs */}
+          <div className="tabs">
+            <button className={`tab ${mode === 'signin' ? 'active' : ''}`} onClick={() => setMode('signin')}>Sign In</button>
+            <button className={`tab ${mode === 'signup' ? 'active' : ''}`} onClick={() => setMode('signup')}>Sign Up</button>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label className="label" htmlFor="auth-email">Email</label>
+              <div style={{ position: 'relative' }}>
+                <Mail size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-muted)' }} />
+                <input
+                  id="auth-email"
+                  className="input"
+                  type="email"
+                  style={{ paddingLeft: '2.25rem' }}
+                  placeholder={`your.name${allowedDomain}`}
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
+              </div>
+              {mode === 'signup' && (
+                <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', color: 'var(--ink-muted)' }}>
+                  Only {allowedDomain} emails allowed.
+                </div>
+              )}
+            </div>
+
+            <div className="form-group">
+              <label className="label" htmlFor="auth-password">Password</label>
+              <div style={{ position: 'relative' }}>
+                <Lock size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-muted)' }} />
+                <input
+                  id="auth-password"
+                  className="input"
+                  type={showPass ? 'text' : 'password'}
+                  style={{ paddingLeft: '2.25rem', paddingRight: '2.5rem' }}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                />
+                <button
+                  type="button"
+                  style={{ position: 'absolute', right: '0.625rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-muted)' }}
+                  onClick={() => setShowPass(p => !p)}
+                >
+                  {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ width: '100%', padding: '0.875rem' }}
+              disabled={loading}
+            >
+              {loading ? <Loader2 size={18} className="animate-spin" /> : mode === 'signin' ? 'Sign In' : 'Create Account'}
+            </button>
+          </form>
+        </div>
+
+        <p style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: '0.875rem', color: 'var(--ink-muted)' }}>
+          {mode === 'signin'
+            ? <>Don't have an account?{' '}<button className="btn btn-ghost btn-sm" onClick={() => setMode('signup')}>Sign Up</button></>
+            : <>Already have an account?{' '}<button className="btn btn-ghost btn-sm" onClick={() => setMode('signin')}>Sign In</button></>
+          }
+        </p>
+      </div>
+    </div>
+  );
+}

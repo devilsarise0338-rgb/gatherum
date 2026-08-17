@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Gatherum - Discover Your Campus Life</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Config -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-container": "#6063ee",
+                        "warning": "#FBBF24",
+                        "primary": "#003fb1",
+                        "on-tertiary-fixed-variant": "#802a00",
+                        "outline": "#737686",
+                        "background": "#f8f9fa",
+                        "surface-container-low": "#f3f4f5",
+                        "ink": "#080808",
+                        "surface-bright": "#f8f9fa",
+                        "secondary": "#4648d4",
+                        "secondary-fixed": "#e1e0ff",
+                        "on-tertiary-fixed": "#380d00",
+                        "on-tertiary-container": "#ffd4c5",
+                        "on-secondary-fixed-variant": "#2f2ebe",
+                        "on-primary-fixed-variant": "#003dab",
+                        "primary-container": "#1a56db",
+                        "tertiary-container": "#ad3b00",
+                        "secondary-fixed-dim": "#c0c1ff",
+                        "surface-container-highest": "#e1e3e4",
+                        "tertiary": "#852b00",
+                        "surface-tint": "#1353d8",
+                        "surface-dim": "#d9dadb",
+                        "error": "#EF4444",
+                        "on-surface": "#191c1d",
+                        "on-error": "#ffffff",
+                        "on-secondary": "#ffffff",
+                        "university-blue": "#005696",
+                        "tertiary-fixed": "#ffdbcf",
+                        "inverse-primary": "#b5c4ff",
+                        "on-tertiary": "#ffffff",
+                        "outline-variant": "#c3c5d7",
+                        "on-primary-fixed": "#00174d",
+                        "on-secondary-container": "#fffbff",
+                        "surface-container": "#edeeef",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "on-secondary-fixed": "#07006c",
+                        "on-background": "#191c1d",
+                        "on-surface-variant": "#434654",
+                        "surface-container-high": "#e7e8e9",
+                        "primary-fixed": "#dbe1ff",
+                        "primary-fixed-dim": "#b5c4ff",
+                        "surface": "#f8f9fa",
+                        "on-primary-container": "#d4dcff",
+                        "on-error-container": "#93000a",
+                        "success": "#10B981",
+                        "surface-variant": "#e1e3e4",
+                        "error-container": "#ffdad6",
+                        "inverse-surface": "#2e3132",
+                        "inverse-on-surface": "#f0f1f2",
+                        "tertiary-fixed-dim": "#ffb59a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "stack-lg": "32px",
+                        "margin-desktop": "40px",
+                        "margin-mobile": "16px",
+                        "gutter": "24px",
+                        "stack-sm": "8px",
+                        "stack-md": "16px",
+                        "base": "4px"
+                    },
+                    "fontFamily": {
+                        "label-bold": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "label-caps": ["Inter"],
+                        "body-md": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "display": ["Inter"],
+                        "mono-data": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-bold": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "700" }],
+                        "body-sm": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "label-caps": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "display": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "mono-data": ["14px", { "lineHeight": "20px", "letterSpacing": "0px", "fontWeight": "500" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        /* Custom scrollbar for horizontal scroll area */
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .hide-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        .tilt-transition {
+            transition: transform 0.1s ease, box-shadow 0.3s ease;
+            transform-style: preserve-3d;
+            will-change: transform;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md antialiased overflow-x-hidden">
+<!-- TopNavBar (Generated from JSON) -->
+<header class="fixed w-full top-0 z-50 bg-surface shadow-[0px_4px_20px_rgba(0,0,0,0.05)] transition-colors duration-300">
+<div class="flex justify-between items-center w-full px-margin-mobile md:px-margin-desktop h-16 max-w-[1440px] mx-auto">
+<!-- Brand -->
+<div class="flex items-center gap-2">
+<span class="font-display text-headline-md text-university-blue">Gatherum</span>
+</div>
+<!-- Navigation Links (Desktop) -->
+<nav class="hidden md:flex items-center gap-gutter h-full">
+<!-- Active Link: Explore (matches landing page intent) -->
+<a class="h-full flex items-center text-primary font-label-bold border-b-2 border-primary hover:text-university-blue transition-colors" href="#">
+                    Explore
+                </a>
+<!-- Inactive Links -->
+<a class="h-full flex items-center text-on-surface-variant font-label-bold hover:text-university-blue transition-colors active:scale-95 transition-transform duration-200" href="#">
+                    My Tickets
+                </a>
+<a class="h-full flex items-center text-on-surface-variant font-label-bold hover:text-university-blue transition-colors active:scale-95 transition-transform duration-200" href="#">
+                    Following
+                </a>
+</nav>
+<!-- Right Actions -->
+<div class="flex items-center gap-stack-md">
+<!-- Search Icon representing search_bar: on_right -->
+<button aria-label="Search" class="text-on-surface-variant hover:text-university-blue transition-colors active:scale-95 transition-transform duration-200">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">search</span>
+</button>
+<!-- Trailing Secondary Action -->
+<a class="hidden md:block text-primary font-label-bold hover:text-university-blue transition-colors active:scale-95 transition-transform duration-200" href="#">
+                    Login
+                </a>
+<!-- Profile Avatar -->
+<div class="w-8 h-8 rounded-full overflow-hidden bg-surface-variant border border-outline-variant cursor-pointer active:scale-95 transition-transform duration-200">
+<img alt="Student Profile" class="w-full h-full object-cover" data-alt="A clean, modern headshot profile picture of a young university student against a bright, solid light blue background. High key lighting, professional yet approachable aesthetic, soft shadows." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAH4i-z5d_yjoG3T9mfZuUIKCgew-cLolRzRZwfQ5KY3SDg-v3h2hqSkzXn5fBV0zkcxxNjaphl9IOCvavq3jd827_mb9I7VRIk2qhbQIVdno-ls08LkmZFRXdsFnqPiq4jDRWle2uTBB9vFqKFNACpsSWGEQ7mIPNum2rH3FTKgtIH3E6Cwlq7jWioJ0TmuyyzQ8614rjxGaQWYx5UbgUx4ir3svoSUdgzMHgsZuwa5y30WVfdDcBd"/>
+</div>
+<!-- Mobile Menu Button -->
+<button class="md:hidden text-on-surface-variant">
+<span class="material-symbols-outlined">menu</span>
+</button>
+</div>
+</div>
+</header>
+<main class="pt-[80px]"> <!-- Offset for fixed header -->
+<!-- Hero Section -->
+<section class="relative w-full max-w-[1440px] mx-auto px-margin-mobile md:px-margin-desktop py-stack-lg md:py-[100px] flex flex-col md:flex-row items-center gap-gutter overflow-hidden">
+<!-- Background Decorative Element -->
+<div class="absolute top-0 right-0 -z-10 w-full md:w-1/2 h-full bg-gradient-to-bl from-primary-fixed to-transparent opacity-50 rounded-bl-[100px]"></div>
+<div class="flex-1 flex flex-col items-start gap-stack-md z-10">
+<h1 class="font-display text-headline-lg-mobile md:text-display text-ink max-w-[600px] leading-tight">
+                    Discover your campus life.
+                </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-[500px]">
+                    Events, clubs, and more at your fingertips. Connect with your community and make the most of your academic journey.
+                </p>
+<div class="mt-stack-sm flex flex-wrap gap-stack-md">
+<a class="bg-primary text-on-primary font-label-bold px-6 py-3 rounded-full hover:bg-university-blue transition-colors shadow-md hover:shadow-lg active:scale-[0.98] flex items-center gap-2" href="#">
+                        Explore Events
+                        <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</a>
+<a class="border-2 border-outline-variant text-on-surface font-label-bold px-6 py-3 rounded-full hover:bg-surface-container-low hover:border-outline transition-colors active:scale-[0.98]" href="#">
+                        For Organizers
+                    </a>
+</div>
+</div>
+<div class="flex-1 w-full relative z-10 mt-stack-lg md:mt-0">
+<div class="relative rounded-2xl overflow-hidden shadow-[0px_20px_40px_rgba(0,0,0,0.12)] aspect-[4/3] w-full max-w-[600px] ml-auto">
+<img class="w-full h-full object-cover" data-alt="A vibrant, bustling university campus quad during a sunny afternoon event. Students are gathered around modern, colorful pop-up booths with clean white canopies. The scene is illuminated by bright, natural daylight casting soft shadows, conveying a lively, high-energy, and modern academic community atmosphere. Shot with a slight depth of field." src="https://lh3.googleusercontent.com/aida-public/AB6AXuB4dUSYMiCxQbTfE0CetkYEvX2oJBJmAb8Lt_HJPqg4VLEYwMejoYsX-XbMSN4Y8VOGREU2SdnMvQuAebBV4raFLjs0UYtFuAZaivebbrSPmh6zkhUBju9CFdxunrXAOeynyd0jwX5Ti3lmYWYzZjwVeZaX2gXTsWNwxRKUuvwQDNOc9_FQEiSjQgbESfUuhrXNac37nUD59T-BK4tG5XDKMye11w1cKifsfUyyde7UbyRrcakI0L_o"/>
+<!-- Glassmorphism Floating Card -->
+<div class="absolute bottom-6 left-6 backdrop-blur-md bg-surface-container-lowest/80 border border-outline-variant/30 p-4 rounded-xl shadow-lg flex items-center gap-3">
+<div class="w-12 h-12 rounded-full bg-success/20 flex items-center justify-center text-success">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div>
+<p class="font-label-bold text-label-bold text-ink">Tech Symposium</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">Check-in confirmed</p>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Value Proposition Section (3-Column Grid) -->
+<section class="w-full bg-surface-container-low py-[80px]">
+<div class="max-w-[1440px] mx-auto px-margin-mobile md:px-margin-desktop">
+<div class="text-center mb-stack-lg">
+<h2 class="font-headline-lg text-headline-lg text-ink">Everything you need</h2>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+<!-- Feature 1 -->
+<div class="bg-surface-container-lowest p-8 rounded-2xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] hover:shadow-[0px_10px_30px_rgba(0,0,0,0.08)] transition-shadow duration-300 flex flex-col gap-4 border border-surface-container-high">
+<div class="w-14 h-14 rounded-xl bg-primary-fixed flex items-center justify-center text-primary-container">
+<span class="material-symbols-outlined text-[32px]">bolt</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-ink">Fast Check-in</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+                            Skip the lines. Use your unique QR code for instant access to all registered campus events.
+                        </p>
+</div>
+<!-- Feature 2 -->
+<div class="bg-surface-container-lowest p-8 rounded-2xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] hover:shadow-[0px_10px_30px_rgba(0,0,0,0.08)] transition-shadow duration-300 flex flex-col gap-4 border border-surface-container-high">
+<div class="w-14 h-14 rounded-xl bg-secondary-fixed flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[32px]">explore</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-ink">Discover Campus Life</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+                            Find clubs, workshops, and social gatherings tailored to your major and personal interests.
+                        </p>
+</div>
+<!-- Feature 3 -->
+<div class="bg-surface-container-lowest p-8 rounded-2xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] hover:shadow-[0px_10px_30px_rgba(0,0,0,0.08)] transition-shadow duration-300 flex flex-col gap-4 border border-surface-container-high">
+<div class="w-14 h-14 rounded-xl bg-tertiary-fixed flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined text-[32px]">dashboard_customize</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-ink">Organizer Tools</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+                            Powerful dashboard to manage attendees, track real-time analytics, and communicate updates effortlessly.
+                        </p>
+</div>
+</div>
+</div>
+</section>
+<!-- Featured Events Section (Horizontal Scroll with TiltCards) -->
+<section class="w-full max-w-[1440px] mx-auto py-[80px]">
+<div class="px-margin-mobile md:px-margin-desktop mb-stack-md flex justify-between items-end">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-ink">Trending Now</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-2">Don't miss out on these upcoming activities.</p>
+</div>
+<a class="hidden md:flex text-primary font-label-bold hover:text-university-blue transition-colors items-center gap-1" href="#">
+                    View all <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+</a>
+</div>
+<!-- Horizontal Scroll Container -->
+<div class="w-full overflow-x-auto hide-scrollbar snap-x snap-mandatory px-margin-mobile md:px-margin-desktop pb-stack-lg">
+<div class="flex gap-gutter w-max">
+<!-- TiltCard 1 -->
+<div class="tilt-card w-[300px] md:w-[350px] bg-surface-container-lowest rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] snap-start flex-shrink-0 cursor-pointer tilt-transition border border-surface-container-highest">
+<div class="h-[180px] w-full rounded-t-xl overflow-hidden relative">
+<img class="w-full h-full object-cover" data-alt="A modern, brightly lit auditorium interior during a tech presentation. A sleek projector screen displays abstract code graphics. The audience seating is minimalist and clean. The lighting is crisp white with subtle blue ambient accents, reflecting a professional, academic tech-forward aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAkc7G7uR_VzgA8SR_u54r8Uj7fiPPbIFM6z25NC2seyk_aCqNquDpM2P5345ti6du9im2JlZANdRgVUxGKDSobL4CN82SW0-rImT0I6Is_zOp43B2U82yPvxkI7dKujxNxHsewvsI2a5lVl4SDZBfwEOkXvVc3laSj8J7DTFOHzru9ACxQgEpTXHw6kKgbXrwBXxNNH-WPxNnQmUFs1qYKY60hoDZ5TuWk3j6m_14W5d-wrGnz3wOG"/>
+<div class="absolute top-3 left-3 bg-surface-container-lowest/90 backdrop-blur-sm px-2 py-1 rounded font-label-caps text-label-caps text-primary tracking-wider shadow-sm">
+                                WORKSHOP
+                            </div>
+</div>
+<div class="p-5 flex flex-col gap-3">
+<h4 class="font-headline-md text-[20px] leading-tight text-ink">Intro to Web3 & Blockchain</h4>
+<div class="flex flex-col gap-1 mt-auto">
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[16px]">calendar_today</span>
+<span>Oct 24, 2:00 PM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[16px]">location_on</span>
+<span>Innovation Lab, Building C</span>
+</div>
+</div>
+</div>
+</div>
+<!-- TiltCard 2 -->
+<div class="tilt-card w-[300px] md:w-[350px] bg-surface-container-lowest rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] snap-start flex-shrink-0 cursor-pointer tilt-transition border border-surface-container-highest">
+<div class="h-[180px] w-full rounded-t-xl overflow-hidden relative">
+<img class="w-full h-full object-cover" data-alt="A dynamic outdoor evening concert on a university campus green. A modern stage with striking geometric lighting design in vibrant indigo and deep blue hues. The crowd is silhouetted against the bright stage lights, creating an energetic and modern social atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAmzHJt2uqcbe8wiFgo5Pkuj_sa3I4j0gd9tbNaOZHlfBUtgxl4Sm8HDvRzL-5GWL3M24zls5Z0vNQeHls13wGgt_sXE6_DXrsv3_gjJis9s41KuHcRO3TRtUzZzralgG8gz2JvmykmvpWEfn0TXW6JtCX2_keYYMxiBFtwAO1uVkkwbOT-LhrqJK368uVKPnj2TFCdKeP3lLcrLZDB7Ku3kArbpo-QbGdS8tzsz1uX68HH5cKzkPQ_"/>
+<div class="absolute top-3 left-3 bg-surface-container-lowest/90 backdrop-blur-sm px-2 py-1 rounded font-label-caps text-label-caps text-secondary tracking-wider shadow-sm">
+                                SOCIAL
+                            </div>
+</div>
+<div class="p-5 flex flex-col gap-3">
+<h4 class="font-headline-md text-[20px] leading-tight text-ink">Fall Fest: Live Music & Food</h4>
+<div class="flex flex-col gap-1 mt-auto">
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[16px]">calendar_today</span>
+<span>Oct 26, 6:00 PM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[16px]">location_on</span>
+<span>Main Quad</span>
+</div>
+</div>
+</div>
+</div>
+<!-- TiltCard 3 -->
+<div class="tilt-card w-[300px] md:w-[350px] bg-surface-container-lowest rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] snap-start flex-shrink-0 cursor-pointer tilt-transition border border-surface-container-highest">
+<div class="h-[180px] w-full rounded-t-xl overflow-hidden relative">
+<img class="w-full h-full object-cover" data-alt="A brightly lit, modern university gymnasium during a career fair. Neatly arranged tables with clean white tablecloths and subtle branding. Students in smart casual attire are engaging with recruiters. The aesthetic is professional, organized, and filled with natural daylight from large upper windows." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDg9nWMDoN91_6Tl7THbutqPeqf052nvBi6zNorUQXD5UTRs3ZKBnQO1K-CZPq7LACeROw1oxdQ3ypYuS8N8lnkUsM4ZYArKIUiS6zCKrxnB_WV1RBvNt1SXpf8F--Q4WMNzmSpUcIzK6GK6P0CXr1W4ClZvKVXBzunxGrgcoRicKmpRNawFIV-3c49NFAuXXoC_Zsajxu9GvEm9rvc1jgzhXY-kfrMv_Msh7igKpXNJK56NNPsdYVv"/>
+<div class="absolute top-3 left-3 bg-surface-container-lowest/90 backdrop-blur-sm px-2 py-1 rounded font-label-caps text-label-caps text-tertiary tracking-wider shadow-sm">
+                                CAREER
+                            </div>
+</div>
+<div class="p-5 flex flex-col gap-3">
+<h4 class="font-headline-md text-[20px] leading-tight text-ink">Annual Tech Career Fair</h4>
+<div class="flex flex-col gap-1 mt-auto">
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[16px]">calendar_today</span>
+<span>Nov 2, 10:00 AM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[16px]">location_on</span>
+<span>Sports Arena</span>
+</div>
+</div>
+</div>
+</div>
+<!-- TiltCard 4 -->
+<div class="tilt-card w-[300px] md:w-[350px] bg-surface-container-lowest rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] snap-start flex-shrink-0 cursor-pointer tilt-transition border border-surface-container-highest">
+<div class="h-[180px] w-full rounded-t-xl overflow-hidden relative">
+<img class="w-full h-full object-cover" data-alt="A clean, minimalist art gallery space on a university campus showcasing student digital artwork on sleek monitors. High key lighting, pristine white walls, and a very structured, calm environment emphasizing modern creativity." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBMx0OLQ1RkwTyV3WqPumQ4v4TtMfnxy1C-RRFFDPKZ6Zj3kGeTYSaQ6HXGuThlDm8Gt1mPYESBT0SwlJgt-MGcck2L8S6uegt92IoW1ZRlzDDn_cjxeu9PrgmTyf9ymx-NSzCmHwTnVbbhRjExQaTzJO2nL5cZ_L2vpnaeXlXiSA9oDIM0uqs9tsd8HHYuFZrplbL4P4SJ5039ewMurkJOXte64_fSOI4mzMR10fYl8CoYuMAipgsA"/>
+<div class="absolute top-3 left-3 bg-surface-container-lowest/90 backdrop-blur-sm px-2 py-1 rounded font-label-caps text-label-caps text-primary tracking-wider shadow-sm">
+                                EXHIBITION
+                            </div>
+</div>
+<div class="p-5 flex flex-col gap-3">
+<h4 class="font-headline-md text-[20px] leading-tight text-ink">Digital Arts Showcase</h4>
+<div class="flex flex-col gap-1 mt-auto">
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[16px]">calendar_today</span>
+<span>Nov 15, 4:00 PM</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-[16px]">location_on</span>
+<span>Design Center Gallery</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="px-margin-mobile mt-4 md:hidden">
+<a class="w-full flex justify-center bg-surface-container-high text-ink font-label-bold py-3 rounded-full hover:bg-surface-variant transition-colors items-center gap-1" href="#">
+                    View all events
+                </a>
+</div>
+</section>
+</main>
+<!-- Standard Footer -->
+<footer class="bg-surface-container-low border-t border-surface-container-highest pt-stack-lg pb-stack-md mt-auto">
+<div class="max-w-[1440px] mx-auto px-margin-mobile md:px-margin-desktop">
+<div class="flex flex-col md:flex-row justify-between items-start gap-stack-lg mb-stack-lg">
+<div class="flex flex-col gap-4 max-w-[300px]">
+<span class="font-display text-[28px] font-bold text-university-blue">Gatherum</span>
+<p class="font-body-sm text-body-sm text-on-surface-variant">
+                        Empowering Poornima University students and organizers to create, discover, and manage unforgettable campus experiences.
+                    </p>
+</div>
+<div class="flex flex-wrap gap-[60px]">
+<div class="flex flex-col gap-3">
+<h5 class="font-label-bold text-label-bold text-ink">Platform</h5>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Explore Events</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">For Organizers</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Download App</a>
+</div>
+<div class="flex flex-col gap-3">
+<h5 class="font-label-bold text-label-bold text-ink">Company</h5>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">About Us</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Contact Support</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">FAQ</a>
+</div>
+<div class="flex flex-col gap-3">
+<h5 class="font-label-bold text-label-bold text-ink">Legal</h5>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Privacy Policy</a>
+<a class="font-body-sm text-body-sm text-on-surface-variant hover:text-primary transition-colors" href="#">Terms of Service</a>
+</div>
+</div>
+</div>
+<div class="border-t border-surface-container-highest pt-stack-md flex flex-col md:flex-row justify-between items-center gap-4">
+<p class="font-body-sm text-body-sm text-outline">
+                    © 2023 Poornima University. All rights reserved.
+                </p>
+<div class="flex gap-4 text-outline">
+<a aria-label="Twitter" class="hover:text-primary transition-colors" href="#">
+<svg aria-hidden="true" class="w-5 h-5" fill="currentColor" viewbox="0 0 24 24"><path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84"></path></svg>
+</a>
+<a aria-label="Instagram" class="hover:text-primary transition-colors" href="#">
+<svg aria-hidden="true" class="w-5 h-5" fill="currentColor" viewbox="0 0 24 24"><path clip-rule="evenodd" d="M12.315 2c2.43 0 2.784.013 3.808.06 1.064.049 1.791.218 2.427.465a4.902 4.902 0 011.772 1.153 4.902 4.902 0 011.153 1.772c.247.636.416 1.363.465 2.427.048 1.067.06 1.407.06 4.123v.08c0 2.643-.012 2.987-.06 4.043-.049 1.064-.218 1.791-.465 2.427a4.902 4.902 0 01-1.153 1.772 4.902 4.902 0 01-1.772 1.153c-.636.247-1.363.416-2.427.465-1.067.048-1.407.06-4.123.06h-.08c-2.643 0-2.987-.012-4.043-.06-1.064-.049-1.791-.218-2.427-.465a4.902 4.902 0 01-1.772-1.153 4.902 4.902 0 01-1.153-1.772c-.247-.636-.416-1.363-.465-2.427-.047-1.024-.06-1.379-.06-3.808v-.63c0-2.43.013-2.784.06-3.808.049-1.064.218-1.791.465-2.427a4.902 4.902 0 011.153-1.772A4.902 4.902 0 015.45 2.525c.636-.247 1.363-.416 2.427-.465C8.901 2.013 9.256 2 11.685 2h.63zm-.081 1.802h-.468c-2.456 0-2.784.011-3.807.058-.975.045-1.504.207-1.857.344-.467.182-.8.398-1.15.748-.35.35-.566.683-.748 1.15-.137.353-.3.882-.344 1.857-.047 1.023-.058 1.351-.058 3.807v.468c0 2.456.011 2.784.058 3.807.045.975.207 1.504.344 1.857.182.466.399.8.748 1.15.35.35.683.566 1.15.748.353.137.882.3 1.857.344 1.054.048 1.37.058 4.041.058h.08c2.597 0 2.917-.01 3.96-.058.976-.045 1.505-.207 1.858-.344.466-.182.8-.398 1.15-.748.35-.35.566-.683.748-1.15.137-.353.3-.882.344-1.857.048-1.055.058-1.37.058-4.041v-.08c0-2.597-.01-2.917-.058-3.96-.045-.976-.207-1.505-.344-1.858a3.097 3.097 0 00-.748-1.15 3.098 3.098 0 00-1.15-.748c-.353-.137-.882-.3-1.857-.344-1.023-.047-1.351-.058-3.807-.058zM12 6.865a5.135 5.135 0 110 10.27 5.135 5.135 0 010-10.27zm0 1.802a3.333 3.333 0 100 6.666 3.333 3.333 0 000-6.666zm5.338-3.205a1.2 1.2 0 110 2.4 1.2 1.2 0 010-2.4z" fill-rule="evenodd"></path></svg>
+</a>
+</div>
+</div>
+</div>
+</footer>
+<!-- Vanilla JS for Micro-interactions -->
+<script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Header scroll effect
+            const header = document.querySelector('header');
+            window.addEventListener('scroll', () => {
+                if (window.scrollY > 20) {
+                    header.classList.add('shadow-[0px_10px_30px_rgba(0,0,0,0.08)]');
+                    header.classList.remove('shadow-[0px_4px_20px_rgba(0,0,0,0.05)]');
+                } else {
+                    header.classList.add('shadow-[0px_4px_20px_rgba(0,0,0,0.05)]');
+                    header.classList.remove('shadow-[0px_10px_30px_rgba(0,0,0,0.08)]');
+                }
+            });
+
+            // 3D Tilt Effect for Event Cards
+            const cards = document.querySelectorAll('.tilt-card');
+            
+            cards.forEach(card => {
+                card.addEventListener('mousemove', e => {
+                    const rect = card.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+                    
+                    // Constrain rotation for subtlety
+                    const rotateX = ((y - centerY) / centerY) * -4;
+                    const rotateY = ((x - centerX) / centerX) * 4;
+                    
+                    card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+                    card.style.boxShadow = '0px 10px 30px rgba(0, 0, 0, 0.12)';
+                });
+                
+                card.addEventListener('mouseleave', () => {
+                    card.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+                    card.style.boxShadow = '0px 4px 20px rgba(0, 0, 0, 0.05)';
+                });
+            });
+        });
+    </script>
+</body></html>

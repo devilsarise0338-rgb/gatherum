@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Gatherum - Student Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "primary-container": "#1a56db",
+                      "inverse-on-surface": "#f0f1f2",
+                      "on-primary": "#ffffff",
+                      "outline": "#737686",
+                      "secondary-fixed": "#e1e0ff",
+                      "on-tertiary-fixed": "#380d00",
+                      "on-secondary-fixed-variant": "#2f2ebe",
+                      "university-blue": "#005696",
+                      "outline-variant": "#c3c5d7",
+                      "surface-bright": "#f8f9fa",
+                      "tertiary-fixed-dim": "#ffb59a",
+                      "on-surface-variant": "#434654",
+                      "success": "#10B981",
+                      "on-secondary-fixed": "#07006c",
+                      "surface-container-highest": "#e1e3e4",
+                      "on-secondary-container": "#fffbff",
+                      "on-primary-fixed": "#00174d",
+                      "error": "#EF4444",
+                      "surface-dim": "#d9dadb",
+                      "on-error-container": "#93000a",
+                      "on-surface": "#191c1d",
+                      "background": "#f8f9fa",
+                      "on-error": "#ffffff",
+                      "warning": "#FBBF24",
+                      "primary-fixed-dim": "#b5c4ff",
+                      "surface-container-high": "#e7e8e9",
+                      "on-tertiary-fixed-variant": "#802a00",
+                      "on-tertiary": "#ffffff",
+                      "ink": "#080808",
+                      "primary-fixed": "#dbe1ff",
+                      "secondary": "#4648d4",
+                      "secondary-fixed-dim": "#c0c1ff",
+                      "on-secondary": "#ffffff",
+                      "secondary-container": "#6063ee",
+                      "error-container": "#ffdad6",
+                      "surface-variant": "#e1e3e4",
+                      "inverse-primary": "#b5c4ff",
+                      "surface-container-low": "#f3f4f5",
+                      "tertiary-fixed": "#ffdbcf",
+                      "surface-container": "#edeeef",
+                      "surface-container-lowest": "#ffffff",
+                      "on-tertiary-container": "#ffd4c5",
+                      "tertiary-container": "#ad3b00",
+                      "surface": "#f8f9fa",
+                      "surface-tint": "#1353d8",
+                      "tertiary": "#852b00",
+                      "primary": "#003fb1",
+                      "on-primary-container": "#d4dcff",
+                      "inverse-surface": "#2e3132",
+                      "on-primary-fixed-variant": "#003dab",
+                      "on-background": "#191c1d"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "stack-sm": "8px",
+                      "margin-mobile": "16px",
+                      "stack-md": "16px",
+                      "gutter": "24px",
+                      "margin-desktop": "40px",
+                      "base": "4px",
+                      "stack-lg": "32px"
+              },
+              "fontFamily": {
+                      "body-sm": [
+                              "Inter"
+                      ],
+                      "display": [
+                              "Inter"
+                      ],
+                      "headline-lg-mobile": [
+                              "Inter"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Inter"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ],
+                      "label-caps": [
+                              "Inter"
+                      ],
+                      "headline-lg": [
+                              "Inter"
+                      ],
+                      "label-bold": [
+                              "Inter"
+                      ],
+                      "mono-data": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "body-sm": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "display": [
+                              "48px",
+                              {
+                                      "lineHeight": "56px",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-lg-mobile": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "body-lg": [
+                              "18px",
+                              {
+                                      "lineHeight": "28px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "32px",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "24px",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-caps": [
+                              "12px",
+                              {
+                                      "lineHeight": "16px",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-lg": [
+                              "32px",
+                              {
+                                      "lineHeight": "40px",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "label-bold": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "letterSpacing": "0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "mono-data": [
+                              "14px",
+                              {
+                                      "lineHeight": "20px",
+                                      "letterSpacing": "0px",
+                                      "fontWeight": "500"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+    </script>
+<style>
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background antialiased min-h-screen pb-24 md:pb-0">
+<!-- TopNavBar (Web) -->
+<header class="hidden md:block docked full-width top-0 bg-surface dark:bg-on-surface shadow-[0px_4px_20px_rgba(0,0,0,0.05)] z-50 sticky">
+<div class="flex justify-between items-center w-full px-margin-desktop h-16 max-w-[1440px] mx-auto">
+<div class="font-display text-headline-md text-university-blue dark:text-primary-fixed-dim">Gatherum</div>
+<nav class="flex gap-gutter">
+<a class="text-on-surface-variant dark:text-outline-variant font-label-bold hover:text-university-blue dark:hover:text-primary-fixed transition-colors" href="#">Explore</a>
+<a class="text-on-surface-variant dark:text-outline-variant font-label-bold hover:text-university-blue dark:hover:text-primary-fixed transition-colors" href="#">My Tickets</a>
+<a class="text-on-surface-variant dark:text-outline-variant font-label-bold hover:text-university-blue dark:hover:text-primary-fixed transition-colors" href="#">Following</a>
+</nav>
+<div class="flex items-center gap-stack-md">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="pl-10 pr-4 py-2 bg-surface-container-low border-none rounded-full font-body-sm focus:ring-2 focus:ring-primary-container w-64 text-on-surface" placeholder="Search events..." type="text"/>
+</div>
+<img alt="Student Profile" class="w-10 h-10 rounded-full object-cover border-2 border-surface-container-high" data-alt="A professional, modern circular profile picture of a young female university student smiling warmly. Soft, highly flattering lighting, set against a clean, light academic background. High-quality corporate tech style photography." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDv-bIPp3a-KDJcAWGly48v42a-j3gy4Zt_rYpVAbu0GhO-vjsVJzUfb5BeWJWSSSsyhd93wwUlerSO1v6ReAQU7sGgyUv5OtNMJv6p0-kdRsO_LB9t-5lA4_6XPtadnq87SibfHE-UCvTDgUVgUua84q1jFj1C8CHDfWCaL2sH2uA6BaIBTsskI7F-HjonSBlQo67rToNgVqhsI1PMv1p1MaC2IIHtqeI_q7TeKU7BrmYeTyr4D2OQ"/>
+</div>
+</div>
+</header>
+<main class="max-w-[1440px] mx-auto px-margin-mobile md:px-margin-desktop pt-stack-lg flex flex-col gap-stack-lg">
+<!-- Welcome Header -->
+<section>
+<h1 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-stack-sm">Welcome back, Sarah! 👋</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant">Here's what's happening around campus.</p>
+</section>
+<!-- Next Up Bento Grid -->
+<section class="grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+<!-- Hero Event Card -->
+<div class="lg:col-span-2 bg-surface rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] overflow-hidden flex flex-col relative group hover:shadow-[0px_10px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1 transition-all duration-300">
+<div class="absolute top-4 left-4 z-10 bg-warning text-on-tertiary-fixed font-label-bold px-3 py-1 rounded-full flex items-center gap-1 shadow-sm">
+<span class="material-symbols-outlined text-[16px]" style="font-variation-settings: 'FILL' 1;">schedule</span>
+                    Starting in 2 hours
+                </div>
+<div class="h-64 w-full relative">
+<img alt="Tech Symposium 2024" class="w-full h-full object-cover" data-alt="A dynamic, high-quality wide photograph of a modern university technology symposium event. Students and speakers engaging in a well-lit, state-of-the-art auditorium with large screens displaying abstract technical graphics. Bright, optimistic, professional light mode aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCEeHMKNx0bqFB-CZN7XT87-e0996hDNQn3fbs_v0C4ei5mkxYNWTKo6pr0tK3DAyWqvM5eeJiwEbS790qfZubfhs8YSo83zu3jZVirnfBsOMB3HuVJz03Q5dujP5RgQFYNXnpmstJGouxHQtKLNPix6m_At2Tlh0fWBwxnARAnEgPFMVHtGe8jBbXlwxQABaxkzG6w6SSI9Zv8rtFPMYFMBMvBtb_2B_ApPRkY8UMpiChz-hkaFSgw"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+</div>
+<div class="p-stack-md flex-1 flex flex-col justify-between z-10 bg-surface -mt-8 rounded-t-xl relative">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-stack-sm">Tech Symposium 2024</h2>
+<div class="flex flex-wrap gap-x-6 gap-y-2 mb-stack-md font-body-sm text-body-sm text-on-surface-variant">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-outline">calendar_month</span> Today, 14:00 - 18:00</span>
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-outline">location_on</span> Main Auditorium</span>
+</div>
+</div>
+<div class="flex items-center justify-between mt-auto pt-stack-sm border-t border-surface-container-high">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 bg-secondary-container rounded-lg flex items-center justify-center text-on-secondary-container font-label-bold">
+                                QR
+                            </div>
+<div>
+<div class="font-label-bold text-label-bold text-on-surface">Ticket #TS-2490</div>
+<div class="font-body-sm text-body-sm text-success">Confirmed</div>
+</div>
+</div>
+<button class="bg-primary text-on-primary px-6 py-3 rounded-lg font-label-bold hover:bg-primary-container transition-colors shadow-sm">
+                            View Ticket
+                        </button>
+</div>
+</div>
+</div>
+<!-- Activity Stats Stack -->
+<div class="flex flex-col gap-stack-md">
+<div class="bg-surface p-stack-md rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] flex items-center justify-between hover:-translate-y-1 transition-transform">
+<div>
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-1">TICKETS HELD</div>
+<div class="font-display text-display text-primary">3</div>
+</div>
+<div class="w-12 h-12 rounded-full bg-primary-fixed flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">local_activity</span>
+</div>
+</div>
+<div class="bg-surface p-stack-md rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] flex items-center justify-between hover:-translate-y-1 transition-transform">
+<div>
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-1">EVENTS ATTENDED</div>
+<div class="font-display text-display text-secondary">12</div>
+</div>
+<div class="w-12 h-12 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">task_alt</span>
+</div>
+</div>
+<div class="bg-surface p-stack-md rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] flex items-center justify-between hover:-translate-y-1 transition-transform">
+<div>
+<div class="font-label-caps text-label-caps text-on-surface-variant mb-1">ORGANIZERS FOLLOWING</div>
+<div class="font-display text-display text-tertiary">8</div>
+</div>
+<div class="w-12 h-12 rounded-full bg-tertiary-fixed flex items-center justify-center text-tertiary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">campaign</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Suggested Carousel -->
+<section class="mt-stack-md">
+<div class="flex justify-between items-end mb-stack-md">
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface">Suggested for You</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1">Based on your Engineering major</p>
+</div>
+<a class="font-label-bold text-label-bold text-university-blue hover:text-primary transition-colors hidden md:block" href="#">See all</a>
+</div>
+<div class="flex overflow-x-auto pb-stack-sm -mx-margin-mobile px-margin-mobile md:mx-0 md:px-0 gap-gutter scrollbar-hide snap-x">
+<!-- Card 1 -->
+<div class="min-w-[280px] md:min-w-[320px] bg-surface rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] snap-start group cursor-pointer hover:shadow-[0px_10px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1 transition-all duration-300 flex flex-col">
+<div class="h-40 w-full rounded-t-xl overflow-hidden">
+<img alt="Robotics Workshop" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="A clean, bright close-up shot of a modern robotics workshop in a university lab. Students collaborating around a table with electronic components. Professional academic light mode visual style with campus blue accents." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDgOFqWLJnMNXRjaylfFZQLp4yaS926Bs1-QjE0bCTuiAlFGj6R_uofNL0D4xOHE1ehS1oVvqQB2k4vJKONUgr3v5YYLvkk17-aDtz2tGDFdZ9iM7Z2ovahBXNmxbIJh5IkvR4D5FrwHqePPPrOd2Kz5-xz1lERaNe4qTeDO-oW4pmUHnvDsbozYq9H-0SPmGWkLQWLIqyuxLW9AkQ1WyI3IOUlPr0GTZh4GMzIPv4HB0o15Si8h2TI"/>
+</div>
+<div class="p-stack-md flex flex-col flex-1">
+<div class="font-label-caps text-label-caps text-university-blue mb-2">WORKSHOP</div>
+<h4 class="font-label-bold text-label-bold text-on-surface mb-2 line-clamp-2">Introduction to Autonomous Robotics</h4>
+<div class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-2 mb-4 mt-auto">
+<span class="material-symbols-outlined text-[18px]">calendar_today</span> Oct 15 • Lab 4B
+                        </div>
+<button class="w-full border-2 border-outline-variant text-on-surface-variant font-label-bold py-2 rounded-lg hover:border-university-blue hover:text-university-blue transition-colors">
+                            Details
+                        </button>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="min-w-[280px] md:min-w-[320px] bg-surface rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] snap-start group cursor-pointer hover:shadow-[0px_10px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1 transition-all duration-300 flex flex-col">
+<div class="h-40 w-full rounded-t-xl overflow-hidden relative">
+<div class="absolute top-2 right-2 bg-success text-on-primary px-2 py-1 rounded text-xs font-bold z-10">FREE</div>
+<img alt="Startup Pitch" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="A high-quality photo of a tech startup pitch event. A speaker presenting on stage with a blurred audience in the foreground. Corporate academic style, well-lit, professional setting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBxhGSwRjjsmtHviA8bWalUqsSV0AX-snqxaiHjNDasRZcrqM5s2fyTtFVnVOVCuO1ZcxWhNqKYRWj_YBeNtpkR3ME4UgbT1LZhuxRx46Cot7DWqwxM8M2THowqbQAMVZVBjAk75MOu-uLoRFbvXmJX9Kevkj_dtRIn8G4iUv2d-c5ieHNUsM8GDIWxKizP31eO0Zln5pI0v-H7o_ZtdRzXVElf_BSGMntPoEUpxpIonxEx-t9YQOWI"/>
+</div>
+<div class="p-stack-md flex flex-col flex-1">
+<div class="font-label-caps text-label-caps text-university-blue mb-2">NETWORKING</div>
+<h4 class="font-label-bold text-label-bold text-on-surface mb-2 line-clamp-2">Alumni Tech Founders Mixer</h4>
+<div class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-2 mb-4 mt-auto">
+<span class="material-symbols-outlined text-[18px]">calendar_today</span> Oct 18 • Student Union
+                        </div>
+<button class="w-full border-2 border-outline-variant text-on-surface-variant font-label-bold py-2 rounded-lg hover:border-university-blue hover:text-university-blue transition-colors">
+                            Details
+                        </button>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="min-w-[280px] md:min-w-[320px] bg-surface rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] snap-start group cursor-pointer hover:shadow-[0px_10px_30px_rgba(0,0,0,0.08)] hover:-translate-y-1 transition-all duration-300 flex flex-col">
+<div class="h-40 w-full rounded-t-xl overflow-hidden">
+<img alt="Hackathon" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="A bright, engaging photograph of a university hackathon event. Students working intensely on laptops in a modern glass-walled room. Clean, tech-forward light mode aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBmJq1xW5vCJYYtHvVA42ymkT7Ef4EPgL3rVuw0zbT2-ecjT0brXkToyisaY-C8NJZVb3BM3Xms09y4uO5UADMZEjDP96F70se9x4eZ8oZWPFaMSHqzlrpLda4Dv8MtHOX8axx-sDamfV7pBDNA5GUmvYOjV0367_r9BL8i-hURGPGCPH9FISAD4yrUeQMhnPTOiXouelhN4epl0dIl5JLbQ1wVBop_3bvdjnSVlTnSKB3x430IZkql"/>
+</div>
+<div class="p-stack-md flex flex-col flex-1">
+<div class="font-label-caps text-label-caps text-university-blue mb-2">COMPETITION</div>
+<h4 class="font-label-bold text-label-bold text-on-surface mb-2 line-clamp-2">CodeRed: 24Hr Hackathon</h4>
+<div class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-2 mb-4 mt-auto">
+<span class="material-symbols-outlined text-[18px]">calendar_today</span> Nov 02 • CS Block
+                        </div>
+<button class="w-full border-2 border-outline-variant text-on-surface-variant font-label-bold py-2 rounded-lg hover:border-university-blue hover:text-university-blue transition-colors">
+                            Details
+                        </button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar (Mobile) -->
+<nav class="md:hidden fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-margin-mobile py-stack-sm bg-surface dark:bg-on-surface shadow-[0px_-4px_20px_rgba(0,0,0,0.05)] rounded-t-xl">
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline-variant font-label-caps text-label-caps active:bg-surface-container-high transition-all p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined mb-1">search</span>
+            Explore
+        </a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline-variant font-label-caps text-label-caps active:bg-surface-container-high transition-all p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined mb-1">confirmation_number</span>
+            Tickets
+        </a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant dark:text-outline-variant font-label-caps text-label-caps active:bg-surface-container-high transition-all p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined mb-1">favorite</span>
+            Following
+        </a>
+<a class="flex flex-col items-center justify-center text-primary dark:text-primary-fixed font-label-caps text-label-caps scale-90 transition-all p-2 rounded-lg" href="#">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">person</span>
+            Profile
+        </a>
+</nav>
+</body></html>

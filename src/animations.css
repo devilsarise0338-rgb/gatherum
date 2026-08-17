@@ -1,0 +1,29 @@
+/* Smooth page transition */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: fadeUp 0.5s ease forwards; }
+
+/* Hover lift for all cards */
+.card, .event-card {
+  transition: transform 0.18s cubic-bezier(0.22,1,0.36,1), box-shadow 0.18s ease !important;
+}
+
+/* Bento grid responsive fix */
+@media (max-width: 900px) {
+  div[style*="gridTemplateColumns: repeat(3, 1fr)"] {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  div[style*="gridColumn: span 2"] {
+    grid-column: span 2 !important;
+  }
+}
+@media (max-width: 640px) {
+  div[style*="gridTemplateColumns: repeat(3, 1fr)"] {
+    grid-template-columns: 1fr !important;
+  }
+  div[style*="gridColumn: span 2"] {
+    grid-column: 1 !important;
+  }
+}

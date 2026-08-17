@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Gatherum - Event Check-in</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "outline": "#737686",
+                      "primary": "#003fb1",
+                      "surface-container-high": "#e7e8e9",
+                      "surface-dim": "#d9dadb",
+                      "primary-fixed": "#dbe1ff",
+                      "on-error-container": "#93000a",
+                      "surface-variant": "#e1e3e4",
+                      "outline-variant": "#c3c5d7",
+                      "primary-container": "#1a56db",
+                      "inverse-primary": "#b5c4ff",
+                      "warning": "#FBBF24",
+                      "surface-container-highest": "#e1e3e4",
+                      "university-blue": "#005696",
+                      "on-primary-container": "#d4dcff",
+                      "on-secondary": "#ffffff",
+                      "inverse-surface": "#2e3132",
+                      "error-container": "#ffdad6",
+                      "on-tertiary-fixed-variant": "#802a00",
+                      "primary-fixed-dim": "#b5c4ff",
+                      "error": "#EF4444",
+                      "surface-container-low": "#f3f4f5",
+                      "on-tertiary-fixed": "#380d00",
+                      "on-surface-variant": "#434654",
+                      "inverse-on-surface": "#f0f1f2",
+                      "on-tertiary": "#ffffff",
+                      "tertiary-fixed-dim": "#ffb59a",
+                      "on-background": "#191c1d",
+                      "success": "#10B981",
+                      "on-error": "#ffffff",
+                      "on-secondary-fixed": "#07006c",
+                      "on-tertiary-container": "#ffd4c5",
+                      "surface-bright": "#f8f9fa",
+                      "surface-container": "#edeeef",
+                      "on-primary-fixed-variant": "#003dab",
+                      "surface": "#f8f9fa",
+                      "on-secondary-container": "#fffbff",
+                      "secondary-fixed": "#e1e0ff",
+                      "on-primary-fixed": "#00174d",
+                      "tertiary-fixed": "#ffdbcf",
+                      "secondary": "#4648d4",
+                      "surface-tint": "#1353d8",
+                      "secondary-fixed-dim": "#c0c1ff",
+                      "tertiary-container": "#ad3b00",
+                      "secondary-container": "#6063ee",
+                      "on-primary": "#ffffff",
+                      "surface-container-lowest": "#ffffff",
+                      "background": "#f8f9fa",
+                      "on-surface": "#191c1d",
+                      "tertiary": "#852b00",
+                      "ink": "#080808",
+                      "on-secondary-fixed-variant": "#2f2ebe"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "stack-md": "16px",
+                      "gutter": "24px",
+                      "margin-mobile": "16px",
+                      "stack-lg": "32px",
+                      "margin-desktop": "40px",
+                      "base": "4px",
+                      "stack-sm": "8px"
+              },
+              "fontFamily": {
+                      "body-lg": ["Inter"],
+                      "body-sm": ["Inter"],
+                      "label-bold": ["Inter"],
+                      "label-caps": ["Inter"],
+                      "headline-md": ["Inter"],
+                      "mono-data": ["Inter"],
+                      "headline-lg-mobile": ["Inter"],
+                      "display": ["Inter"],
+                      "body-md": ["Inter"],
+                      "headline-lg": ["Inter"]
+              },
+              "fontSize": {
+                      "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                      "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "label-bold": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}],
+                      "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "700"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                      "mono-data": ["14px", {"lineHeight": "20px", "letterSpacing": "0px", "fontWeight": "500"}],
+                      "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "700"}],
+                      "display": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "700"}]
+              }
+            }
+          }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        
+        @keyframes scanner-sweep {
+            0% { top: 0%; opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { top: 100%; opacity: 0; }
+        }
+        .animate-scan {
+            animation: scanner-sweep 2.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        /* Glassmorphism utility */
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+
+        /* Subtle elevation */
+        .shadow-level-1 { box-shadow: 0px 4px 20px rgba(0,0,0,0.05); }
+        .shadow-level-2 { box-shadow: 0px 10px 30px rgba(0,0,0,0.08); }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md antialiased min-h-screen flex">
+<!-- SideNavBar (Desktop Only based on layout logic) -->
+<aside class="hidden md:flex flex-col h-screen w-64 fixed left-0 top-0 bg-surface-container-lowest border-r border-outline-variant shadow-sm py-stack-lg z-50">
+<!-- Header -->
+<div class="px-margin-desktop mb-stack-lg">
+<h1 class="font-display text-headline-md text-university-blue mb-1">Poornima Events</h1>
+<p class="font-body-sm text-on-surface-variant">Admin Console</p>
+</div>
+<!-- Navigation Links -->
+<nav class="flex-1 px-4 space-y-2">
+<!-- Inactive -->
+<a class="text-on-surface-variant px-4 py-3 flex items-center gap-3 hover:bg-surface-container-high transition-all rounded-lg font-label-bold text-label-bold" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                Dashboard
+            </a>
+<!-- Active State (Intent: Check-in relates to managing an Event) -->
+<a class="bg-secondary-container text-on-secondary-container rounded-lg px-4 py-3 flex items-center gap-3 scale-[0.98] transition-transform font-label-bold text-label-bold" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">calendar_today</span>
+                Events
+            </a>
+<a class="text-on-surface-variant px-4 py-3 flex items-center gap-3 hover:bg-surface-container-high transition-all rounded-lg font-label-bold text-label-bold" href="#">
+<span class="material-symbols-outlined">groups</span>
+                Attendees
+            </a>
+<a class="text-on-surface-variant px-4 py-3 flex items-center gap-3 hover:bg-surface-container-high transition-all rounded-lg font-label-bold text-label-bold" href="#">
+<span class="material-symbols-outlined">campaign</span>
+                Marketing
+            </a>
+<a class="text-on-surface-variant px-4 py-3 flex items-center gap-3 hover:bg-surface-container-high transition-all rounded-lg font-label-bold text-label-bold" href="#">
+<span class="material-symbols-outlined">analytics</span>
+                Analytics
+            </a>
+<a class="text-on-surface-variant px-4 py-3 flex items-center gap-3 hover:bg-surface-container-high transition-all rounded-lg font-label-bold text-label-bold" href="#">
+<span class="material-symbols-outlined">settings</span>
+                Settings
+            </a>
+</nav>
+<!-- CTA -->
+<div class="px-4 mt-auto">
+<button class="w-full bg-primary text-on-primary py-3 rounded-lg font-label-bold text-label-bold hover:opacity-90 transition-opacity flex justify-center items-center gap-2 shadow-level-1">
+<span class="material-symbols-outlined">add</span>
+                Create Event
+            </button>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 md:ml-64 flex flex-col min-h-screen">
+<!-- Header Section -->
+<header class="bg-surface-container-lowest px-margin-mobile md:px-margin-desktop py-stack-md border-b border-surface-container shadow-level-1 sticky top-0 z-40 flex items-center justify-between">
+<div>
+<div class="flex items-center gap-2 text-on-surface-variant mb-1">
+<span class="material-symbols-outlined text-[16px]">location_on</span>
+<span class="font-label-bold text-label-bold">Main Auditorium</span>
+<span class="w-1 h-1 rounded-full bg-outline-variant"></span>
+<span class="font-label-bold text-label-bold text-success flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-success animate-pulse"></span> Live
+                    </span>
+</div>
+<h2 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface m-0">Tech Symposium 2024</h2>
+</div>
+<!-- Quick Actions -->
+<div class="flex items-center gap-4">
+<button class="w-10 h-10 rounded-full bg-surface border border-outline-variant flex items-center justify-center text-on-surface hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined">help</span>
+</button>
+</div>
+</header>
+<!-- Main Workspace (Grid Layout) -->
+<div class="flex-1 p-margin-mobile md:p-margin-desktop bg-background grid grid-cols-1 lg:grid-cols-12 gap-gutter items-start">
+<!-- LEFT COLUMN: Scanner Viewport (Bento Main Cell) -->
+<div class="lg:col-span-8 h-full min-h-[600px] flex flex-col relative rounded-xl overflow-hidden shadow-level-2 bg-ink border border-surface-variant">
+<!-- Background Camera Feed Simulation -->
+<div class="absolute inset-0 bg-cover bg-center opacity-40" data-alt="A slightly blurred, wide-angle viewpoint from a mobile device camera pointing towards a modern conference hall entrance. The lighting is bright and clear, reflecting a tech-forward academic setting. In the center, there is an out-of-focus hand holding up a smartphone displaying a crisp, black-and-white QR code on its screen, ready to be scanned." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBrgrkGlt7xjKOPIA5vjILAREdo0WzzQK389a_9CDBvAuf9fEWgmw9wngDJdTorQvf9yTBJ4vvbHeELLR30oGOlnn8dd7v-Z-Rpb4Dp_l64OvQzkAykwJg768iSyBlWD5ZNsi6Hy2tLE-ZbaaWYMI9QW_6Sgx-JUkjYASHkEbhp2qYzgQyWp1XfKkG14CKlGNl-YKePBVdNJ-DBKElSxvoNzJVaXCwk_vhKXmIB1cu-wbYZ8LLytExB')"></div>
+<!-- Scanner Interface Overlay -->
+<div class="absolute inset-0 z-10 flex flex-col justify-between p-stack-md">
+<!-- Scanner Top Bar -->
+<div class="flex justify-between items-center w-full">
+<div class="glass-panel px-4 py-2 rounded-full flex items-center gap-2 border border-white/20">
+<span class="material-symbols-outlined text-success">lens</span>
+<span class="font-label-bold text-label-bold text-ink">Camera Active</span>
+</div>
+<button class="w-12 h-12 glass-panel rounded-full flex items-center justify-center hover:bg-white transition-colors border border-white/20">
+<span class="material-symbols-outlined text-ink">cameraswitch</span>
+</button>
+</div>
+<!-- Target Reticle -->
+<div class="flex-1 flex items-center justify-center relative pointer-events-none">
+<!-- Corner brackets -->
+<div class="w-64 h-64 md:w-80 md:h-80 relative">
+<!-- Top Left -->
+<div class="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-lg"></div>
+<!-- Top Right -->
+<div class="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-lg"></div>
+<!-- Bottom Left -->
+<div class="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-lg"></div>
+<!-- Bottom Right -->
+<div class="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-lg"></div>
+<!-- Animated Scan Line -->
+<div class="absolute left-0 w-full h-[2px] bg-primary shadow-[0_0_12px_theme(colors.primary)] animate-scan z-20"></div>
+</div>
+</div>
+<!-- Status Flash Feedback (Simulated Success State via JS/CSS structure) -->
+<!-- To show error, change bg-success/90 to bg-error/90, etc. -->
+<div class="w-full max-w-md mx-auto glass-panel rounded-xl p-4 flex items-center gap-4 border border-white/20 transform transition-transform shadow-lg translate-y-0">
+<div class="w-12 h-12 rounded-full bg-success flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<div class="flex-1">
+<p class="font-label-bold text-label-bold text-success mb-0">Success: Checked In</p>
+<p class="font-headline-md text-headline-md text-ink m-0">Alex Mercer</p>
+<p class="font-body-sm text-outline m-0">Ticket ID: #TS24-8902</p>
+</div>
+</div>
+</div>
+</div>
+<!-- RIGHT COLUMN: Tools & Context -->
+<div class="lg:col-span-4 flex flex-col gap-stack-lg">
+<!-- Live Counter Card -->
+<div class="bg-surface-container-lowest rounded-xl p-stack-md shadow-level-1 border border-surface-container">
+<div class="flex justify-between items-end mb-4">
+<div>
+<h3 class="font-label-caps text-label-caps text-outline uppercase tracking-wider mb-2">Live Progress</h3>
+<div class="flex items-baseline gap-2">
+<span class="font-display text-display text-primary">142</span>
+<span class="font-headline-md text-headline-md text-outline-variant">/ 200</span>
+</div>
+</div>
+<div class="w-12 h-12 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center mb-2">
+<span class="material-symbols-outlined text-3xl">people</span>
+</div>
+</div>
+<!-- Progress Bar -->
+<div class="w-full bg-surface-container-high rounded-full h-3 overflow-hidden">
+<div class="bg-primary h-full rounded-full transition-all duration-500 ease-out" style="width: 71%;"></div>
+</div>
+<p class="font-body-sm text-outline mt-3 text-right">71% Attendance Rate</p>
+</div>
+<!-- Manual Fallback Entry -->
+<div class="bg-surface-container-lowest rounded-xl p-stack-md shadow-level-1 border border-surface-container">
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">keyboard</span>
+<h3 class="font-headline-md text-[20px] leading-tight text-on-surface m-0">Manual Check-in</h3>
+</div>
+<p class="font-body-sm text-on-surface-variant mb-4">Search by name, email, or Ticket ID if QR scan fails.</p>
+<form class="flex flex-col gap-3" onsubmit="event.preventDefault();">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full h-[56px] pl-12 pr-4 bg-surface rounded-lg border border-outline-variant text-body-md text-on-surface focus:outline-none focus:ring-3 focus:ring-primary/50 focus:border-primary transition-all placeholder:text-outline-variant" placeholder="e.g. TS24-1234 or Jane Doe" type="text"/>
+</div>
+<button class="h-[56px] w-full bg-primary text-on-primary font-label-bold text-label-bold rounded-lg hover:bg-university-blue transition-colors flex items-center justify-center gap-2 shadow-sm" type="button">
+                            Verify &amp; Check-in
+                            <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</form>
+</div>
+<!-- Recent Activity List (High-end UI pattern integration) -->
+<div class="bg-surface-container-lowest rounded-xl shadow-level-1 border border-surface-container flex-1 overflow-hidden flex flex-col max-h-[400px]">
+<div class="p-stack-md border-b border-surface-container bg-surface-bright flex justify-between items-center sticky top-0">
+<h3 class="font-label-bold text-label-bold text-on-surface m-0">Recent Scans</h3>
+<span class="font-label-caps text-label-caps text-primary cursor-pointer hover:underline">View All</span>
+</div>
+<ul class="flex-1 overflow-y-auto m-0 p-0 list-none divide-y divide-surface-container">
+<!-- Item 1 -->
+<li class="p-4 hover:bg-surface transition-colors flex items-center justify-between min-h-[72px]">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-on-surface-variant font-label-bold">
+                                    AM
+                                </div>
+<div>
+<p class="font-label-bold text-label-bold text-on-surface m-0">Alex Mercer</p>
+<p class="font-mono-data text-[12px] text-outline m-0">#TS24-8902</p>
+</div>
+</div>
+<span class="font-body-sm text-outline text-[12px]">Just now</span>
+</li>
+<!-- Item 2 -->
+<li class="p-4 hover:bg-surface transition-colors flex items-center justify-between min-h-[72px]">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center text-on-surface-variant font-label-bold">
+                                    SJ
+                                </div>
+<div>
+<p class="font-label-bold text-label-bold text-on-surface m-0">Sarah Jenkins</p>
+<p class="font-mono-data text-[12px] text-outline m-0">#TS24-8891</p>
+</div>
+</div>
+<span class="font-body-sm text-outline text-[12px]">2 min ago</span>
+</li>
+<!-- Item 3 -->
+<li class="p-4 hover:bg-surface transition-colors flex items-center justify-between min-h-[72px]">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center text-warning font-label-bold border border-warning/30">
+<span class="material-symbols-outlined text-[18px]">warning</span>
+</div>
+<div>
+<p class="font-label-bold text-label-bold text-on-surface m-0">Michael Chen</p>
+<p class="font-body-sm text-[12px] text-warning m-0">Duplicate Entry Attempt</p>
+</div>
+</div>
+<span class="font-body-sm text-outline text-[12px]">5 min ago</span>
+</li>
+</ul>
+</div>
+</div>
+</div>
+</main>
+<!-- Mobile Bottom Navigation (Hidden on desktop, logic per instructions) -->
+<!-- Assuming the primary view is Desktop given SideNav request, but adding minimal mobile fallbacks structural support if needed -->
+</body></html>
