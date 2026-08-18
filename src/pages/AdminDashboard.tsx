@@ -1,19 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { Profile, PlatformSettings } from '../types';
-import { Users, Settings, Shield, Loader2, Search } from 'lucide-react';
+import { Profile, PlatformSettings, Event } from '../types';
+import { Users, Settings, Shield, Loader2, Search, BarChart2, Calendar, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { isEventAutoArchived } from '../lib/utils';
+import { Link } from 'react-router-dom';
 
-type AdminTab = 'users' | 'settings' | 'audit';
+type AdminTab = 'overview' | 'users' | 'events' | 'settings' | 'audit';
 
 export default function AdminDashboard() {
-  const [tab, setTab] = useState<AdminTab>('users');
+  const [tab, setTab] = useState<AdminTab>('overview');
   const [users, setUsers] = useState<Profile[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [auditLog, setAuditLog] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
+  const [stats, setStats] = useState({ regs: 0 });
+
   const [settingsForm, setSettingsForm] = useState({
     signups_enabled: true,
     allowed_email_domain: '@poornima.org',
@@ -24,36 +29,35 @@ export default function AdminDashboard() {
     async function load() {
       setLoading(true);
 
-      // Use the admin_fetch_users RPC or just select from profiles (admin RLS allows it)
-      const { data: usersData } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const [usersRes, eventsRes, settingsRes, auditRes, regsRes] = await Promise.all([
+        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('events').select('*, registrations(count)').order('created_at', { ascending: false }),
+        supabase.from('platform_settings').select('*').eq('id', 1).single(),
+        supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(50),
+        supabase.from('registrations').select('*', { count: 'exact', head: true })
+      ]);
 
-      if (usersData) setUsers(usersData as Profile[]);
+      if (usersRes.data) setUsers(usersRes.data as Profile[]);
+      
+      if (eventsRes.data) {
+        setEvents(eventsRes.data.map((e: any) => ({
+          ...e,
+          registration_count: e.registrations?.[0]?.count ?? 0
+        })));
+      }
 
-      const { data: settingsData } = await supabase
-        .from('platform_settings')
-        .select('*')
-        .eq('id', 1)
-        .single();
-
-      if (settingsData) {
-        setSettings(settingsData as PlatformSettings);
+      if (settingsRes.data) {
+        setSettings(settingsRes.data as PlatformSettings);
         setSettingsForm({
-          signups_enabled: settingsData.signups_enabled,
-          allowed_email_domain: settingsData.allowed_email_domain,
-          maintenance_mode: settingsData.maintenance_mode,
+          signups_enabled: settingsRes.data.signups_enabled,
+          allowed_email_domain: settingsRes.data.allowed_email_domain,
+          maintenance_mode: settingsRes.data.maintenance_mode,
         });
       }
 
-      const { data: audit } = await supabase
-        .from('audit_log')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
+      if (auditRes.data) setAuditLog(auditRes.data);
+      if (regsRes.count !== null) setStats({ regs: regsRes.count });
 
-      if (audit) setAuditLog(audit);
       setLoading(false);
     }
     load();
@@ -69,8 +73,8 @@ export default function AdminDashboard() {
   }
 
   async function toggleBan(userId: string, isBanned: boolean) {
-    const { error } = await supabase.rpc('admin_toggle_user_ban', { p_user_id: userId, p_is_banned: !isBanned });
-    if (error) toast.error(error.message);
+    const res = await supabase.rpc('admin_toggle_user_ban', { p_user_id: userId, p_is_banned: !isBanned });
+    if (res.error) toast.error(res.error.message);
     else {
       toast.success(isBanned ? 'User unbanned.' : 'User banned.');
       setUsers(us => us.map(u => u.id === userId ? { ...u, is_banned: !isBanned } : u));
@@ -89,11 +93,26 @@ export default function AdminDashboard() {
     setSavingSettings(false);
   }
 
-  const filtered = users.filter(u =>
+  async function deleteEvent(id: string) {
+    if (!confirm('Are you sure you want to delete this event as an admin? This cannot be undone.')) return;
+    const { error } = await supabase.from('events').delete().eq('id', id);
+    if (error) toast.error(error.message);
+    else {
+      toast.success('Event deleted');
+      setEvents(es => es.filter(e => e.id !== id));
+    }
+  }
+
+  const filteredUsers = users.filter(u =>
     !search ||
     (u.email ?? '').toLowerCase().includes(search.toLowerCase()) ||
     (u.full_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
     (u.roll_number ?? '').toLowerCase().includes(search.toLowerCase())
+  );
+
+  const filteredEvents = events.filter(e =>
+    !search ||
+    (e.title ?? '').toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -104,16 +123,22 @@ export default function AdminDashboard() {
           <div className="tag" style={{ background: 'var(--red)', color: 'var(--white)', marginBottom: '0.75rem' }}>Admin</div>
           <h1 style={{ fontSize: '2rem', fontWeight: 700 }}>Admin Dashboard</h1>
           <p style={{ color: 'rgba(255,255,255,0.6)', marginTop: '0.25rem' }}>
-            {users.length} users · Platform Control
+            Platform metrics, users, events, and settings
           </p>
         </div>
       </div>
 
       <div className="container" style={{ padding: '2rem 1.5rem' }}>
         {/* Tabs */}
-        <div className="tabs">
+        <div className="tabs" style={{ marginBottom: '2rem', flexWrap: 'wrap' }}>
+          <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>
+            <BarChart2 size={14} style={{ display: 'inline', marginRight: 4 }} /> Overview
+          </button>
           <button className={`tab ${tab === 'users' ? 'active' : ''}`} onClick={() => setTab('users')}>
-            <Users size={14} style={{ display: 'inline', marginRight: 4 }} /> Users
+            <Users size={14} style={{ display: 'inline', marginRight: 4 }} /> Users ({users.length})
+          </button>
+          <button className={`tab ${tab === 'events' ? 'active' : ''}`} onClick={() => setTab('events')}>
+            <Calendar size={14} style={{ display: 'inline', marginRight: 4 }} /> Events ({events.length})
           </button>
           <button className={`tab ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>
             <Settings size={14} style={{ display: 'inline', marginRight: 4 }} /> Settings
@@ -127,9 +152,33 @@ export default function AdminDashboard() {
           <div style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
             <div className="spinner" />
           </div>
+        ) : tab === 'overview' ? (
+          <div className="bento-grid">
+            <div className="card" style={{ padding: '2rem' }}>
+              <div style={{ color: 'var(--ink-muted)', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.5rem' }}>TOTAL USERS</div>
+              <div style={{ fontSize: '3rem', fontWeight: 800 }}>{users.length}</div>
+              <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', fontSize: '0.875rem' }}>
+                <div><span style={{ color: 'var(--ink-muted)' }}>Students:</span> {users.filter(u => u.role === 'student').length}</div>
+                <div><span style={{ color: 'var(--ink-muted)' }}>Organizers:</span> {users.filter(u => u.role === 'organizer').length}</div>
+              </div>
+            </div>
+            
+            <div className="card" style={{ padding: '2rem' }}>
+              <div style={{ color: 'var(--ink-muted)', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.5rem' }}>TOTAL EVENTS</div>
+              <div style={{ fontSize: '3rem', fontWeight: 800 }}>{events.length}</div>
+              <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', fontSize: '0.875rem' }}>
+                <div><span style={{ color: 'var(--ink-muted)' }}>Active:</span> {events.filter(e => !e.is_unpublished && !isEventAutoArchived(e)).length}</div>
+                <div><span style={{ color: 'var(--ink-muted)' }}>Archived:</span> {events.filter(e => isEventAutoArchived(e)).length}</div>
+              </div>
+            </div>
+
+            <div className="card" style={{ padding: '2rem' }}>
+              <div style={{ color: 'var(--ink-muted)', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.5rem' }}>TOTAL REGISTRATIONS</div>
+              <div style={{ fontSize: '3rem', fontWeight: 800 }}>{stats.regs}</div>
+            </div>
+          </div>
         ) : tab === 'users' ? (
           <div>
-            {/* Search */}
             <div style={{ position: 'relative', maxWidth: 360, marginBottom: '1.5rem' }}>
               <Search size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-muted)' }} />
               <input className="input" style={{ paddingLeft: '2.25rem' }} placeholder="Search users…"
@@ -148,7 +197,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(u => (
+                  {filteredUsers.map(u => (
                     <tr key={u.id}>
                       <td>
                         <div style={{ fontWeight: 600 }}>{u.full_name ?? '—'}</div>
@@ -183,6 +232,59 @@ export default function AdminDashboard() {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : tab === 'events' ? (
+          <div>
+            <div style={{ position: 'relative', maxWidth: 360, marginBottom: '1.5rem' }}>
+              <Search size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-muted)' }} />
+              <input className="input" style={{ paddingLeft: '2.25rem' }} placeholder="Search events…"
+                value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+
+            <div className="table-wrapper">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Date</th>
+                    <th>Registrations</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredEvents.map(ev => {
+                    const isArchived = isEventAutoArchived(ev);
+                    return (
+                      <tr key={ev.id}>
+                        <td>
+                          <div style={{ fontWeight: 600 }}>{ev.title ?? '—'}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--ink-muted)' }}>{ev.category}</div>
+                        </td>
+                        <td style={{ fontSize: '0.8125rem' }}>
+                          {ev.start_time ? new Date(ev.start_time).toLocaleDateString() : '—'}
+                        </td>
+                        <td>
+                          <span style={{ fontWeight: 700 }}>{ev.registration_count}</span>
+                          <span style={{ color: 'var(--ink-muted)', fontSize: '0.75rem' }}> / {ev.capacity}</span>
+                        </td>
+                        <td>
+                          <span className={`badge ${ev.is_unpublished ? 'badge-yellow' : isArchived ? 'badge-ink' : 'badge-green'}`}>
+                            {ev.is_unpublished ? 'Draft' : isArchived ? 'Archived' : 'Published'}
+                          </span>
+                        </td>
+                        <td style={{ display: 'flex', gap: '0.5rem' }}>
+                          <Link to={`/events/${ev.id}`} className="btn btn-sm btn-ghost">View</Link>
+                          <button className="btn btn-sm btn-ghost" style={{ color: 'var(--red)' }} onClick={() => deleteEvent(ev.id)}>
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
