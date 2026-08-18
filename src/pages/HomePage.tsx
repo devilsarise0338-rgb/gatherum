@@ -324,15 +324,27 @@ export default function HomePage() {
           }}
         >
           {/* Trophy */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Trophy/3D/trophy_3d.png" size={180} top="15%" right="15%" delay={0} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Trophy/3D/trophy_3d.png" size={180} top="10%" right="15%" delay={0} duration={5} />
           {/* Basketball */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Basketball/3D/basketball_3d.png" size={140} bottom="20%" right="25%" delay={0.5} duration={5} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Basketball/3D/basketball_3d.png" size={120} bottom="15%" right="20%" delay={0.5} duration={4.5} />
           {/* Party Popper */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Party%20popper/3D/party_popper_3d.png" size={160} top="10%" left="50%" delay={1.2} duration={4.5} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Party%20popper/3D/party_popper_3d.png" size={150} top="12%" left="55%" delay={1.2} duration={5.5} />
           {/* Ticket */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Admission%20tickets/3D/admission_tickets_3d.png" size={130} bottom="15%" left="40%" delay={0.8} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Admission%20tickets/3D/admission_tickets_3d.png" size={110} bottom="10%" left="45%" delay={0.8} duration={4} />
           {/* Calendar */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Calendar/3D/calendar_3d.png" size={120} top="35%" right="5%" delay={1.5} duration={5.5} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Calendar/3D/calendar_3d.png" size={120} top="40%" right="8%" delay={1.5} duration={5} />
+          
+          {/* NEW ELEMENTS */}
+          {/* Laptop (Hackathons) */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Laptop/3D/laptop_3d.png" size={160} top="65%" right="35%" delay={0.3} duration={6} />
+          {/* Microphone (Open Mic / Talks) */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Microphone/3D/microphone_3d.png" size={130} top="25%" right="30%" delay={1.1} duration={4.8} />
+          {/* Artist Palette (Arts / Culture) */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Artist%20palette/3D/artist_palette_3d.png" size={140} bottom="25%" left="60%" delay={0.7} duration={5.2} />
+          {/* Pizza (Free Food / Meetups) */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Pizza/3D/pizza_3d.png" size={110} top="5%" right="40%" delay={1.8} duration={4.2} />
+          {/* Guitar (Music / Concerts) */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Guitar/3D/guitar_3d.png" size={150} bottom="5%" right="5%" delay={0.9} duration={5.8} />
         </motion.div>
 
         {/* Red wedge */}
