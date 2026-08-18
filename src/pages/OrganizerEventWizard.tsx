@@ -4,6 +4,16 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+
+function formatToLocalInput(isoString?: string | null | Date) {
+  if (!isoString) return '';
+  const d = new Date(isoString as any);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 const CATEGORIES = ['Technical', 'Cultural', 'Sports', 'Workshop', 'Seminar', 'Competition', 'Social', 'Other'];
 
@@ -45,13 +55,13 @@ export default function OrganizerEventWizard() {
             title: data.title ?? '',
             description: data.description ?? '',
             category: data.category ?? 'Technical',
-            start_time: data.start_time?.slice(0, 16) ?? '',
-            end_time: data.end_time?.slice(0, 16) ?? '',
+            start_time: formatToLocalInput(data.start_time),
+            end_time: formatToLocalInput(data.end_time),
             location: data.location ?? '',
             capacity: String(data.capacity),
             poster_url: data.poster_url ?? '',
             is_unpublished: data.is_unpublished,
-            registration_deadline: data.registration_deadline?.slice(0, 16) ?? '',
+            registration_deadline: formatToLocalInput(data.registration_deadline),
           });
         }
         setLoading(false);
@@ -173,11 +183,25 @@ export default function OrganizerEventWizard() {
           <div className="resp-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
             <div>
               <label className="label">Start Time *</label>
-              <input className="input" type="datetime-local" value={form.start_time} onChange={e => update('start_time', e.target.value)} />
+              <DatePicker 
+                selected={form.start_time ? new Date(form.start_time) : null}
+                onChange={(d) => update('start_time', formatToLocalInput(d))}
+                showTimeSelect
+                dateFormat="MMM d, yyyy h:mm aa"
+                className="input"
+                placeholderText="Select start time"
+              />
             </div>
             <div>
               <label className="label">End Time</label>
-              <input className="input" type="datetime-local" value={form.end_time} onChange={e => update('end_time', e.target.value)} />
+              <DatePicker 
+                selected={form.end_time ? new Date(form.end_time) : null}
+                onChange={(d) => update('end_time', formatToLocalInput(d))}
+                showTimeSelect
+                dateFormat="MMM d, yyyy h:mm aa"
+                className="input"
+                placeholderText="Select end time"
+              />
             </div>
           </div>
 
@@ -189,7 +213,14 @@ export default function OrganizerEventWizard() {
             </div>
             <div>
               <label className="label">Registration Deadline</label>
-              <input className="input" type="datetime-local" value={form.registration_deadline} onChange={e => update('registration_deadline', e.target.value)} />
+              <DatePicker 
+                selected={form.registration_deadline ? new Date(form.registration_deadline) : null}
+                onChange={(d) => update('registration_deadline', formatToLocalInput(d))}
+                showTimeSelect
+                dateFormat="MMM d, yyyy h:mm aa"
+                className="input"
+                placeholderText="Select deadline"
+              />
             </div>
           </div>
 
