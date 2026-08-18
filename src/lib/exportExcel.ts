@@ -28,7 +28,7 @@ export async function exportEventParticipants(eventId: string, eventTitle: strin
       .from('registrations')
       .select(`
         *,
-        profile:student_id (
+        profile:profiles!inner (
           full_name,
           roll_number,
           branch,
