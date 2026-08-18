@@ -14,9 +14,6 @@ import {
   ChevronDown, Star, Trophy, Ticket,
 } from 'lucide-react';
 
-/* ═══════════════════════════════════════════════════════
-   Floating 3D Elements
-═══════════════════════════════════════════════════════ */
 function FloatingImage({
   src,
   size,
@@ -26,6 +23,9 @@ function FloatingImage({
   bottom,
   delay = 0,
   duration = 4,
+  rotate = 0,
+  blur = 0,
+  opacity = 1,
 }: {
   src: string;
   size: number;
@@ -35,22 +35,27 @@ function FloatingImage({
   bottom?: string | number;
   delay?: number;
   duration?: number;
+  rotate?: number;
+  blur?: number;
+  opacity?: number;
 }) {
   return (
     <motion.img
       src={src}
+      initial={{ rotate }}
       style={{
         position: 'absolute',
         top, left, right, bottom,
         width: size,
         height: size,
         objectFit: 'contain',
-        filter: 'drop-shadow(0px 10px 15px rgba(0,0,0,0.2))',
-        zIndex: 1,
+        filter: `drop-shadow(0px 15px 25px rgba(0,0,0,0.15)) blur(${blur}px)`,
+        opacity,
+        zIndex: blur > 2 ? 0 : 1,
       }}
       animate={{
         y: ['-15px', '15px', '-15px'],
-        rotate: [-5, 5, -5],
+        rotate: [rotate - 8, rotate + 8, rotate - 8],
       }}
       transition={{
         duration,
@@ -323,28 +328,21 @@ export default function HomePage() {
             y: heroY, scale: heroScale,
           }}
         >
-          {/* Trophy */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Trophy/3D/trophy_3d.png" size={180} top="10%" right="15%" delay={0} duration={5} />
-          {/* Basketball */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Basketball/3D/basketball_3d.png" size={120} bottom="15%" right="20%" delay={0.5} duration={4.5} />
-          {/* Party Popper */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Party%20popper/3D/party_popper_3d.png" size={150} top="12%" left="55%" delay={1.2} duration={5.5} />
-          {/* Ticket */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Admission%20tickets/3D/admission_tickets_3d.png" size={110} bottom="10%" left="45%" delay={0.8} duration={4} />
-          {/* Calendar */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Calendar/3D/calendar_3d.png" size={120} top="40%" right="8%" delay={1.5} duration={5} />
+          {/* BACKGROUND LAYER (Blurred) */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Calendar/3D/calendar_3d.png" size={140} top="12%" left="18%" delay={0} duration={6} rotate={-15} blur={4} opacity={0.6} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Admission%20tickets/3D/admission_tickets_3d.png" size={110} top="20%" right="5%" delay={0.8} duration={4} rotate={25} blur={3} opacity={0.7} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Basketball/3D/basketball_3d.png" size={90} bottom="15%" left="38%" delay={1.1} duration={5} rotate={10} blur={5} opacity={0.5} />
           
-          {/* NEW ELEMENTS */}
-          {/* Laptop (Hackathons) */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Laptop/3D/laptop_3d.png" size={160} top="65%" right="35%" delay={0.3} duration={6} />
-          {/* Microphone (Open Mic / Talks) */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Microphone/3D/microphone_3d.png" size={130} top="25%" right="30%" delay={1.1} duration={4.8} />
-          {/* Artist Palette (Arts / Culture) */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Artist%20palette/3D/artist_palette_3d.png" size={140} bottom="25%" left="60%" delay={0.7} duration={5.2} />
-          {/* Pizza (Free Food / Meetups) */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Pizza/3D/pizza_3d.png" size={110} top="5%" right="40%" delay={1.8} duration={4.2} />
-          {/* Guitar (Music / Concerts) */}
-          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Guitar/3D/guitar_3d.png" size={150} bottom="5%" right="5%" delay={0.9} duration={5.8} />
+          {/* MIDGROUND LAYER */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Microphone/3D/microphone_3d.png" size={120} top="8%" right="42%" delay={1.5} duration={5.5} rotate={-20} blur={1} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Laptop/3D/laptop_3d.png" size={150} top="40%" right="18%" delay={0.3} duration={6} rotate={12} blur={1} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Artist%20palette/3D/artist_palette_3d.png" size={130} bottom="8%" left="52%" delay={0.7} duration={5.2} rotate={-10} blur={0.5} />
+          
+          {/* FOREGROUND LAYER */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Trophy/3D/trophy_3d.png" size={200} top="5%" right="15%" delay={0.2} duration={5} rotate={5} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Party%20popper/3D/party_popper_3d.png" size={160} bottom="35%" left="48%" delay={1.2} duration={4.5} rotate={-25} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Guitar/3D/guitar_3d.png" size={190} bottom="8%" right="10%" delay={0.9} duration={5.8} rotate={35} />
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Pizza/3D/pizza_3d.png" size={100} top="3%" right="28%" delay={1.8} duration={4.2} rotate={15} />
         </motion.div>
 
         {/* Red wedge */}
