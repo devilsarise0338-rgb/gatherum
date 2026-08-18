@@ -188,7 +188,7 @@ export default function AdminDashboard() {
             </div>
           </div>
         ) : tab === 'settings' ? (
-          <div className="card" style={{ padding: '2rem', maxWidth: 540 }}>
+          <div className="card resp-card-pad" style={{ maxWidth: 540 }}>
             <h2 style={{ fontWeight: 700, fontSize: '1.25rem', marginBottom: '1.5rem' }}>Platform Settings</h2>
 
             <div className="form-group">

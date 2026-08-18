@@ -54,7 +54,7 @@ export default function ArchivesPage() {
           </button>
           <br />
           <div className="tag" style={{ background: 'var(--ink-muted)', marginBottom: '0.75rem', color: 'white' }}>Historical</div>
-          <h1 style={{ fontSize: '2.5rem', fontWeight: 700, marginBottom: '0.5rem' }}>Past Events Archive</h1>
+          <h1 style={{ fontSize: 'clamp(2rem, 5vw, 2.5rem)', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '0.25rem' }}>Event Archives</h1>
           <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '1rem' }}>
             A library of completed Gatherum events.
           </p>

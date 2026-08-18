@@ -28,7 +28,7 @@ export default function Navbar() {
   ];
 
   return (
-    <nav className="navbar" style={{ position: 'relative' }}>
+    <header className="navbar" style={{ zIndex: 100 }}>
       <div className="navbar-inner">
         {/* Logo */}
         <div
@@ -131,6 +131,6 @@ export default function Navbar() {
           )}
         </div>
       )}
-    </nav>
+    </header>
   );
 }

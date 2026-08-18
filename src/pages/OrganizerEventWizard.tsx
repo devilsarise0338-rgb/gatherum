@@ -156,7 +156,7 @@ export default function OrganizerEventWizard() {
           </div>
 
           {/* Category + Capacity row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+          <div className="resp-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
             <div>
               <label className="label">Category</label>
               <select className="select" value={form.category} onChange={e => update('category', e.target.value)}>
@@ -170,7 +170,7 @@ export default function OrganizerEventWizard() {
           </div>
 
           {/* Date/time row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+          <div className="resp-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
             <div>
               <label className="label">Start Time *</label>
               <input className="input" type="datetime-local" value={form.start_time} onChange={e => update('start_time', e.target.value)} />
@@ -182,7 +182,7 @@ export default function OrganizerEventWizard() {
           </div>
 
           {/* Location & Registration Deadline */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+          <div className="resp-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
             <div>
               <label className="label">Location / Venue</label>
               <input className="input" placeholder="Seminar Hall, Block A" value={form.location} onChange={e => update('location', e.target.value)} />

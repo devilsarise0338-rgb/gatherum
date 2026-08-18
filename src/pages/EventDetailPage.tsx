@@ -213,7 +213,7 @@ export default function EventDetailPage() {
       </div>
 
       <div className="container" style={{ padding: '2.5rem 1.5rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '2.5rem', alignItems: 'start' }}>
+        <div className="resp-event-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: '2.5rem', alignItems: 'start' }}>
           {/* ── Left column ── */}
           <div>
             {/* Poster */}
@@ -270,7 +270,7 @@ export default function EventDetailPage() {
             )}
 
             {/* Details grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div className="resp-details-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
               {[
                 { icon: <Calendar size={16} />, label: 'Date', value: fmt(event.start_time) },
                 { icon: <Clock size={16} />, label: 'Time', value: `${fmtTime(event.start_time)}${event.end_time ? ' – ' + fmtTime(event.end_time) : ''}` },

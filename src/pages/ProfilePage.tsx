@@ -137,7 +137,7 @@ export default function ProfilePage() {
                 onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
+            <div className="resp-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
               <div>
                 <label className="label">Roll Number <span style={{ color: 'var(--red)' }}>*</span></label>
                 <input className="input" placeholder="2021BTECH001" value={form.roll_number} required

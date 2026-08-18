@@ -77,6 +77,17 @@ button, input, textarea, select {
 .uppercase { text-transform: uppercase; }
 .tracking-wide { letter-spacing: 0.08em; }
 .tracking-widest { letter-spacing: 0.2em; }
+.hide-on-mobile { display: block; }
+.resp-flex-wrap { display: flex; }
+.resp-card-pad { padding: 2rem; }
+.resp-ml-auto { margin-left: auto; }
+
+@media (max-width: 768px) {
+  .hide-on-mobile { display: none !important; }
+  .resp-flex-wrap { flex-wrap: wrap !important; }
+  .resp-card-pad { padding: 1.25rem !important; }
+  .resp-ml-auto { margin-left: 0 !important; width: 100%; justify-content: flex-start; }
+}
 
 /* --- Brutalist Card --- */
 .card {
@@ -800,3 +811,84 @@ button, input, textarea, select {
 .avatar-sm { width: 32px; height: 32px; font-size: 0.75rem; }
 .avatar-md { width: 48px; height: 48px; font-size: 1rem; }
 .avatar-lg { width: 72px; height: 72px; font-size: 1.5rem; }
+
+/* ==========================================================================
+   RESPONSIVE — Global overrides
+   ========================================================================== */
+
+/* Tablet (≤ 900px) */
+@media (max-width: 900px) {
+  /* Event detail page 2-col → 1-col */
+  .resp-event-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Stats row wrap */
+  .resp-stats-row {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  /* Details grid 2-col stays but shrinks */
+  .resp-details-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .section { padding: 2.5rem 0; }
+}
+
+/* Mobile (≤ 640px) */
+@media (max-width: 640px) {
+  .container {
+    padding: 0 1rem;
+  }
+
+  .section { padding: 2rem 0; }
+
+  /* Stats go 1 col */
+  .resp-stats-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Details grid 1 col */
+  .resp-details-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Form grids 1 col */
+  .resp-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Tabs wrap */
+  .tabs {
+    flex-wrap: wrap;
+  }
+
+  /* Smaller heading */
+  h1 {
+    font-size: 1.5rem !important;
+  }
+
+  /* Card shadow reduce on mobile for cleaner look */
+  .card {
+    box-shadow: var(--shadow-sm);
+  }
+  .card:hover {
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Avatar sizes reduced */
+  .avatar-lg { width: 56px; height: 56px; font-size: 1.25rem; }
+}
+
+/* Small mobile (≤ 400px) */
+@media (max-width: 400px) {
+  .container {
+    padding: 0 0.75rem;
+  }
+
+  .btn {
+    font-size: 0.8125rem;
+    padding: 0.5rem 0.875rem;
+  }
+}

@@ -324,6 +324,7 @@ export default function HomePage() {
       >
         {/* 3D Emoji Floating Elements */}
         <motion.div
+          className="hide-on-mobile"
           style={{
             position: 'absolute', inset: 0, pointerEvents: 'none',
             y: heroY, scale: heroScale,
@@ -347,7 +348,7 @@ export default function HomePage() {
         </motion.div>
 
         {/* Red wedge */}
-        <div style={{
+        <div className="hide-on-mobile" style={{
           position: 'absolute', top: 0, right: 0, bottom: 0, width: '45%',
           background: 'var(--red)', clipPath: 'polygon(18% 0, 100% 0, 100% 100%, 0% 100%)',
           opacity: 0.055, pointerEvents: 'none',
@@ -355,6 +356,7 @@ export default function HomePage() {
 
         {/* Yellow circle decor */}
         <motion.div
+          className="hide-on-mobile"
           style={{
             position: 'absolute', bottom: '-8%', right: '5%',
             width: 320, height: 320, borderRadius: '50%',
@@ -374,7 +376,8 @@ export default function HomePage() {
 
         {/* Content */}
         <motion.div
-          style={{ position: 'relative', zIndex: 2, opacity: heroOpacity, paddingLeft: '2rem', width: '100%' }}
+          className="container"
+          style={{ position: 'relative', zIndex: 2, opacity: heroOpacity, width: '100%' }}
         >
           <div style={{ maxWidth: 660 }}>
             {/* Pill label */}
@@ -404,7 +407,7 @@ export default function HomePage() {
                 animate={{ y: 0 }}
                 transition={{ duration: 0.8, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
                 style={{
-                  fontSize: 'clamp(2.75rem, 7vw, 5rem)',
+                  fontSize: 'clamp(2rem, 7vw, 5rem)',
                   fontWeight: 700, lineHeight: 1.0,
                   letterSpacing: '-0.03em',
                 }}
@@ -419,7 +422,7 @@ export default function HomePage() {
                 animate={{ y: 0 }}
                 transition={{ duration: 0.8, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 style={{
-                  fontSize: 'clamp(2.75rem, 7vw, 5rem)',
+                  fontSize: 'clamp(2rem, 7vw, 5rem)',
                   fontWeight: 700, lineHeight: 1.0,
                   letterSpacing: '-0.03em',
                   color: 'var(--red)',
@@ -612,6 +615,7 @@ export default function HomePage() {
               <Reveal key={i} delay={i * 0.12} y={30}>
                 <motion.div
                   whileHover={{ x: 8, boxShadow: 'var(--shadow-xl)' }}
+                  className="card card-red noise resp-flex-wrap" 
                   style={{
                     background: i % 2 === 0 ? 'var(--red)' : 'var(--yellow)',
                     color: i % 2 === 0 ? 'var(--white)' : 'var(--ink)',
@@ -653,14 +657,9 @@ export default function HomePage() {
             </div>
           </Reveal>
 
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gridTemplateRows: 'auto auto',
-            gap: '1.25rem',
-          }}>
+          <div className="bento-grid">
             {/* Big card */}
-            <Reveal delay={0} style={{ gridColumn: 'span 2' }}>
+            <Reveal delay={0} className="bento-span-2">
               <motion.div
                 whileHover={{ y: -4, boxShadow: 'var(--shadow-xl)' }}
                 className="card card-red noise"
@@ -709,10 +708,10 @@ export default function HomePage() {
               </motion.div>
             </Reveal>
 
-            <Reveal delay={0.2} style={{ gridColumn: 'span 2' }}>
+            <Reveal delay={0.3} className="bento-span-2">
               <motion.div
                 whileHover={{ y: -4, boxShadow: 'var(--shadow-xl)' }}
-                className="card card-ink"
+                className="card card-ink resp-flex-wrap"
                 style={{ padding: '2rem', minHeight: 180, display: 'flex', alignItems: 'center', gap: '2rem' }}
               >
                 <div>

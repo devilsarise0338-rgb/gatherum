@@ -193,7 +193,7 @@ export default function StudentDashboard() {
                             </div>
                             <div>
                               <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--ink-muted)', marginBottom: '0.25rem' }}>TICKET ID</div>
-                              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.9375rem', letterSpacing: '0.05em' }}>{reg.ticket_id}</div>
+                              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '0.9375rem', letterSpacing: '0.05em', wordBreak: 'break-all' }}>{reg.ticket_id}</div>
                             </div>
                           </div>
                           <span className={`badge ${reg.status === 'attended' ? 'badge-ink' : 'badge-yellow'}`}>

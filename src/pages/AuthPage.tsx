@@ -39,8 +39,8 @@ export default function AuthPage() {
   }
 
   if (sent) return (
-    <div style={{ minHeight: '100vh', background: 'var(--off-white)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div className="card" style={{ padding: '2.5rem', maxWidth: 440, width: '100%', textAlign: 'center' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--off-white)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+      <div className="card resp-card-pad" style={{ maxWidth: 440, width: '100%', textAlign: 'center' }}>
         <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>📬</div>
         <h2 style={{ fontWeight: 700, fontSize: '1.5rem', marginBottom: '0.5rem' }}>Check Your Inbox</h2>
         <p style={{ color: 'var(--ink-muted)', marginBottom: '1.5rem' }}>
@@ -57,15 +57,15 @@ export default function AuthPage() {
     <div style={{
       minHeight: '100vh', background: 'var(--off-white)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '2rem',
+      padding: '1rem',
     }}>
       {/* Background decor */}
-      <div style={{
+      <div className="hide-on-mobile" style={{
         position: 'fixed', top: 0, right: 0, width: '40%', height: '100vh',
         background: 'var(--red)', clipPath: 'polygon(20% 0, 100% 0, 100% 100%, 0% 100%)',
         opacity: 0.07, pointerEvents: 'none',
       }} />
-      <div style={{
+      <div className="hide-on-mobile" style={{
         position: 'fixed', bottom: '-10%', left: '-5%', width: 300, height: 300,
         background: 'var(--yellow)', borderRadius: '50%', opacity: 0.15,
         pointerEvents: 'none', border: '2px solid var(--border)',
@@ -86,7 +86,7 @@ export default function AuthPage() {
         </div>
 
         {/* Card */}
-        <div className="card" style={{ padding: '2rem' }}>
+        <div className="card resp-card-pad">
           {/* Tabs */}
           <div className="tabs">
             <button className={`tab ${mode === 'signin' ? 'active' : ''}`} onClick={() => setMode('signin')}>Sign In</button>

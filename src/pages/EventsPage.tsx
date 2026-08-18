@@ -103,7 +103,7 @@ export default function EventsPage() {
           </select>
 
           {/* Archives Link */}
-          <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
+          <div className="resp-ml-auto" style={{ display: 'flex', gap: '0.5rem' }}>
             <Link
               to="/archives"
               className="btn btn-ghost btn-sm"
