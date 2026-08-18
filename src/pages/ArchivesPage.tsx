@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Event } from '../types';
 import EventCard from '../components/EventCard';
+import { isEventAutoArchived } from '../lib/utils';
 import { Search, X, ArrowLeft } from 'lucide-react';
 
 export default function ArchivesPage() {
@@ -17,15 +18,18 @@ export default function ArchivesPage() {
       const { data } = await supabase
         .from('events')
         .select('*, registrations(count)')
-        .eq('is_archived', true)
+        .eq('is_unpublished', false)
         .neq('registrations.status', 'cancelled')
+        .or(`is_archived.eq.true,start_time.lt.${new Date().toISOString()}`)
         .order('start_time', { ascending: false });
 
       if (data) {
-        const evts = data.map((e: any) => ({
-          ...e,
-          registration_count: e.registrations?.[0]?.count ?? 0,
-        }));
+        const evts = data
+          .map((e: any) => ({
+            ...e,
+            registration_count: e.registrations?.[0]?.count ?? 0,
+          }))
+          .filter((e: any) => isEventAutoArchived(e));
         setEvents(evts);
       }
       setLoading(false);

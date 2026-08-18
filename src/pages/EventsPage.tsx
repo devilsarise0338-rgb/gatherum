@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Event } from '../types';
 import EventCard from '../components/EventCard';
+import { isEventAutoArchived } from '../lib/utils';
 import { Search, Filter, X } from 'lucide-react';
 
 const CATEGORIES = ['All', 'Technical', 'Cultural', 'Sports', 'Workshop', 'Seminar', 'Competition', 'Social', 'Other'];
@@ -29,10 +30,12 @@ export default function EventsPage() {
 
       const { data } = await q;
       if (data) {
-        const evts = data.map((e: any) => ({
-          ...e,
-          registration_count: e.registrations?.[0]?.count ?? 0,
-        }));
+        const evts = data
+          .map((e: any) => ({
+            ...e,
+            registration_count: e.registrations?.[0]?.count ?? 0,
+          }))
+          .filter((e: any) => !isEventAutoArchived(e));
         setEvents(evts);
       }
       setLoading(false);

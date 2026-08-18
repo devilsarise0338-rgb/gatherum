@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Event } from '../types';
+import { isEventAutoArchived } from '../lib/utils';
 import { Plus, QrCode, BarChart2, Users, Calendar, Download } from 'lucide-react';
 import SafeImage from '../components/SafeImage';
 import toast from 'react-hot-toast';
@@ -71,9 +72,9 @@ export default function OrganizerDashboard() {
     setExportingId(null);
   }
 
-  const published = events.filter(e => !e.is_unpublished && !e.is_archived);
-  const drafts = events.filter(e => e.is_unpublished && !e.is_archived);
-  const archived = events.filter(e => e.is_archived);
+  const published = events.filter(e => !e.is_unpublished && !isEventAutoArchived(e));
+  const drafts = events.filter(e => e.is_unpublished && !isEventAutoArchived(e));
+  const archived = events.filter(e => isEventAutoArchived(e));
   
   const shown = tab === 'published' ? published : tab === 'drafts' ? drafts : archived;
 
@@ -145,9 +146,11 @@ export default function OrganizerDashboard() {
                   ? 'All your events are published!' 
                   : 'No archived events yet.'}
             </p>
-            <button className="btn btn-primary" onClick={() => navigate('/organizer/events/new')}>
-              <Plus size={16} /> Create Event
-            </button>
+            {tab !== 'archived' && (
+              <button className="btn btn-primary" onClick={() => navigate('/organizer/events/new')}>
+                <Plus size={16} /> Create Event
+              </button>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
