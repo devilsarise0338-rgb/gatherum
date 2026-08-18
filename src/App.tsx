@@ -19,7 +19,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import ProfilePage from './pages/ProfilePage';
 
 /* ── Route Guards ── */
-function RequireAuth({ children, role }: { children: React.ReactElement; role?: string | string[] }) {
+function RequireAuth({ children, role, allowIncomplete }: { children: React.ReactElement; role?: string | string[]; allowIncomplete?: boolean }) {
   const { user, profile, loading } = useAuth();
   const location = useLocation();
 
@@ -41,6 +41,11 @@ function RequireAuth({ children, role }: { children: React.ReactElement; role?: 
         <p style={{ color: 'var(--ink-muted)' }}>Contact an administrator for assistance.</p>
       </div>
     );
+  }
+
+  // Force profile completion for new users
+  if (!allowIncomplete && profile && !profile.profile_completed) {
+    return <Navigate to="/profile" state={{ from: location, mustComplete: true }} replace />;
   }
 
   if (role) {
@@ -181,7 +186,7 @@ function RootRoutes() {
           <Route path="/admin" element={<RequireAuth role="admin"><PageWrapper><AdminDashboard /></PageWrapper></RequireAuth>} />
 
           {/* Profile */}
-          <Route path="/profile" element={<RequireAuth><PageWrapper><ProfilePage /></PageWrapper></RequireAuth>} />
+          <Route path="/profile" element={<RequireAuth allowIncomplete><PageWrapper><ProfilePage /></PageWrapper></RequireAuth>} />
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/" replace />} />
