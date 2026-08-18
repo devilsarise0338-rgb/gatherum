@@ -24,6 +24,7 @@ export default function OrganizerDashboard() {
         .from('events')
         .select('*, registrations(count)')
         .eq('organizer_id', profile!.id)
+        .neq('registrations.status', 'cancelled')
         .order('created_at', { ascending: false });
 
       if (data) {

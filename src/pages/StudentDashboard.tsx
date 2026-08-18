@@ -35,6 +35,7 @@ export default function StudentDashboard() {
         .from('events')
         .select('*, registrations(count)')
         .eq('is_unpublished', false)
+        .neq('registrations.status', 'cancelled')
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true })
         .limit(4);

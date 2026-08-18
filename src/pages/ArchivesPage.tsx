@@ -18,6 +18,7 @@ export default function ArchivesPage() {
         .from('events')
         .select('*, registrations(count)')
         .eq('is_archived', true)
+        .neq('registrations.status', 'cancelled')
         .order('start_time', { ascending: false });
 
       if (data) {

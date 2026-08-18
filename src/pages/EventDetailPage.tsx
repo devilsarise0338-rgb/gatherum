@@ -42,7 +42,7 @@ export default function EventDetailPage() {
       .from('registrations')
       .select('id', { count: 'exact' })
       .eq('event_id', id)
-      .eq('status', 'registered');
+      .in('status', ['registered', 'attended']);
     setRegCount(count ?? 0);
 
     if (user) {
@@ -103,8 +103,8 @@ export default function EventDetailPage() {
   );
 
   const now = new Date();
-  const startTime = new Date(event.start_time);
-  const isPast = startTime < now;
+  const endTime = event.end_time ? new Date(event.end_time) : new Date(event.start_time);
+  const isPast = endTime < now;
   const isDeadlinePast = event.registration_deadline ? new Date(event.registration_deadline) < now : false;
   const isFull = regCount >= event.capacity;
   const activeStatus = myReg?.status;

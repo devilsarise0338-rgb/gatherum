@@ -21,6 +21,7 @@ export default function EventsPage() {
         .select('*, registrations(count)')
         .eq('is_unpublished', false)
         .eq('is_archived', false)
+        .neq('registrations.status', 'cancelled')
         .order('start_time', { ascending: true })
         .gte('start_time', new Date(Date.now() - 86400000).toISOString());
 

@@ -45,7 +45,7 @@ export default function EventCard({ event }: { event: Event }) {
   }
 
   const emoji = CATEGORY_EMOJI[event.category ?? ''] ?? '📅';
-  const isPast = new Date(event.start_time) < new Date();
+  const isPast = new Date(event.end_time ?? event.start_time) < new Date();
   const isFull = event.registration_count !== undefined
     ? event.registration_count >= event.capacity
     : false;

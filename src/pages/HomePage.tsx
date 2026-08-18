@@ -292,7 +292,8 @@ export default function HomePage() {
 
   useEffect(() => {
     supabase.from('events').select('*, registrations(count)')
-      .eq('is_unpublished', false).order('start_time', { ascending: true }).limit(6)
+      .eq('is_unpublished', false).neq('registrations.status', 'cancelled')
+      .order('start_time', { ascending: true }).limit(6)
       .then(({ data }) => {
         if (data) {
           setFeaturedEvents(data.map((e: any) => ({ ...e, registration_count: e.registrations?.[0]?.count ?? 0 })));
