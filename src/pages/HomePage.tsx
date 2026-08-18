@@ -1,8 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { Float } from '@react-three/drei';
-import * as THREE from 'three';
 import {
   motion, useScroll, useTransform, useSpring,
   useInView, useMotionValue, useAnimationFrame,
@@ -18,61 +15,50 @@ import {
 } from 'lucide-react';
 
 /* ═══════════════════════════════════════════════════════
-   3D Scene
+   Floating 3D Elements
 ═══════════════════════════════════════════════════════ */
-function FloatingShape({
-  position, color, shape, speed = 0.5,
+function FloatingImage({
+  src,
+  size,
+  top,
+  left,
+  right,
+  bottom,
+  delay = 0,
+  duration = 4,
 }: {
-  position: [number, number, number];
-  color: string;
-  shape: 'box' | 'sphere' | 'torus' | 'cone';
-  speed?: number;
+  src: string;
+  size: number;
+  top?: string | number;
+  left?: string | number;
+  right?: string | number;
+  bottom?: string | number;
+  delay?: number;
+  duration?: number;
 }) {
-  const ref = useRef<THREE.Mesh>(null!);
-  useFrame((state, delta) => {
-    ref.current.rotation.x += delta * speed * 0.8;
-    ref.current.rotation.y += delta * speed;
-    ref.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * speed) * 0.3;
-  });
-
-  const geo =
-    shape === 'box' ? <boxGeometry args={[0.8, 0.8, 0.8]} /> :
-    shape === 'torus' ? <torusGeometry args={[0.5, 0.2, 16, 32]} /> :
-    shape === 'cone' ? <coneGeometry args={[0.4, 0.9, 8]} /> :
-    <sphereGeometry args={[0.45, 32, 32]} />;
-
   return (
-    <Float speed={1.2} floatIntensity={0.8}>
-      <mesh ref={ref} position={position} castShadow>
-        {geo}
-        <meshStandardMaterial
-          color={color}
-          roughness={0.2}
-          metalness={0.6}
-          emissive={color}
-          emissiveIntensity={0.15}
-        />
-      </mesh>
-    </Float>
-  );
-}
-
-function Scene3D() {
-  return (
-    <>
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[5, 8, 5]} intensity={1.5} castShadow />
-      <pointLight position={[-5, 3, -3]} color="#FFD600" intensity={1.2} />
-      <pointLight position={[5, -3, -5]} color="#DC143C" intensity={0.8} />
-
-      <FloatingShape position={[-4, 1, -3]} color="#DC143C" shape="box" speed={0.4} />
-      <FloatingShape position={[4, -1, -4]} color="#FFD600" shape="torus" speed={0.6} />
-      <FloatingShape position={[0, 2.5, -5]} color="#1A1209" shape="sphere" speed={0.3} />
-      <FloatingShape position={[-3.5, -2, -3.5]} color="#FFD600" shape="cone" speed={0.5} />
-      <FloatingShape position={[3.5, 2.5, -3]} color="#DC143C" shape="torus" speed={0.7} />
-      <FloatingShape position={[-1, -2.5, -4]} color="#DC143C" shape="box" speed={0.35} />
-      <FloatingShape position={[1.5, 3, -4]} color="#FFD600" shape="cone" speed={0.55} />
-    </>
+    <motion.img
+      src={src}
+      style={{
+        position: 'absolute',
+        top, left, right, bottom,
+        width: size,
+        height: size,
+        objectFit: 'contain',
+        filter: 'drop-shadow(0px 10px 15px rgba(0,0,0,0.2))',
+        zIndex: 1,
+      }}
+      animate={{
+        y: ['-15px', '15px', '-15px'],
+        rotate: [-5, 5, -5],
+      }}
+      transition={{
+        duration,
+        repeat: Infinity,
+        ease: 'easeInOut',
+        delay,
+      }}
+    />
   );
 }
 
@@ -330,16 +316,23 @@ export default function HomePage() {
           background: 'var(--off-white)', overflow: 'hidden',
         }}
       >
-        {/* Parallax 3D canvas */}
+        {/* 3D Emoji Floating Elements */}
         <motion.div
           style={{
             position: 'absolute', inset: 0, pointerEvents: 'none',
             y: heroY, scale: heroScale,
           }}
         >
-          <Canvas camera={{ position: [0, 0, 7], fov: 55 }}>
-            <Scene3D />
-          </Canvas>
+          {/* Trophy */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Trophy/3D/trophy_3d.png" size={180} top="15%" right="15%" delay={0} />
+          {/* Basketball */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Basketball/3D/basketball_3d.png" size={140} bottom="20%" right="25%" delay={0.5} duration={5} />
+          {/* Party Popper */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Party%20popper/3D/party_popper_3d.png" size={160} top="10%" left="50%" delay={1.2} duration={4.5} />
+          {/* Ticket */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Admission%20tickets/3D/admission_tickets_3d.png" size={130} bottom="15%" left="40%" delay={0.8} />
+          {/* Calendar */}
+          <FloatingImage src="https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Calendar/3D/calendar_3d.png" size={120} top="35%" right="5%" delay={1.5} duration={5.5} />
         </motion.div>
 
         {/* Red wedge */}
@@ -370,8 +363,7 @@ export default function HomePage() {
 
         {/* Content */}
         <motion.div
-          className="container"
-          style={{ position: 'relative', zIndex: 2, opacity: heroOpacity }}
+          style={{ position: 'relative', zIndex: 2, opacity: heroOpacity, paddingLeft: '2rem', width: '100%' }}
         >
           <div style={{ maxWidth: 660 }}>
             {/* Pill label */}
