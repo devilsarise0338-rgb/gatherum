@@ -3,8 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Profile } from '../types';
-import SafeImage from '../components/SafeImage';
-import { User, Save, Loader2, AlertTriangle } from 'lucide-react';
+import { Save, Loader2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function ProfilePage() {

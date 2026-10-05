@@ -203,7 +203,7 @@ export default function OrganizerEventWizard() {
               <label className="label">Start Time *</label>
               <DatePicker 
                 selected={form.start_time ? new Date(form.start_time) : null}
-                onChange={(d) => update('start_time', formatToLocalInput(d))}
+                onChange={(d: Date | null) => update('start_time', formatToLocalInput(d))}
                 showTimeSelect
                 dateFormat="MMM d, yyyy h:mm aa"
                 className="input"
@@ -214,7 +214,7 @@ export default function OrganizerEventWizard() {
               <label className="label">End Time</label>
               <DatePicker 
                 selected={form.end_time ? new Date(form.end_time) : null}
-                onChange={(d) => update('end_time', formatToLocalInput(d))}
+                onChange={(d: Date | null) => update('end_time', formatToLocalInput(d))}
                 showTimeSelect
                 dateFormat="MMM d, yyyy h:mm aa"
                 className="input"
@@ -233,7 +233,7 @@ export default function OrganizerEventWizard() {
               <label className="label">Registration Deadline</label>
               <DatePicker 
                 selected={form.registration_deadline ? new Date(form.registration_deadline) : null}
-                onChange={(d) => update('registration_deadline', formatToLocalInput(d))}
+                onChange={(d: Date | null) => update('registration_deadline', formatToLocalInput(d))}
                 showTimeSelect
                 dateFormat="MMM d, yyyy h:mm aa"
                 className="input"

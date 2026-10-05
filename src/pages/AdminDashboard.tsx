@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Profile, PlatformSettings, Event } from '../types';
 import { Users, Settings, Shield, Loader2, Search, BarChart2, Calendar, Trash2 } from 'lucide-react';
@@ -12,7 +12,7 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState<AdminTab>('overview');
   const [users, setUsers] = useState<Profile[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
-  const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const [, setSettings] = useState<PlatformSettings | null>(null);
   const [auditLog, setAuditLog] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');

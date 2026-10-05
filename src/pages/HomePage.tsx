@@ -2,8 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   motion, useScroll, useTransform, useSpring,
-  useInView, useMotionValue, useAnimationFrame,
-  AnimatePresence,
+  useInView, useMotionValue,
 } from 'motion/react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -259,8 +258,7 @@ function CursorGlow() {
 /* ═══════════════════════════════════════════════════════
    Parallax image / decorative block
 ═══════════════════════════════════════════════════════ */
-function ParallaxBlock({ speed = 0.3, style, children }: {
-  speed?: number;
+function ParallaxBlock({ style, children }: {
   style?: React.CSSProperties;
   children: React.ReactNode;
 }) {
@@ -542,7 +540,6 @@ export default function HomePage() {
             background: 'var(--red)', opacity: 0.04,
             pointerEvents: 'none', zIndex: 0,
           }}
-          speed={0.2}
         >
           <div style={{ width: '100%', height: '100%' }} />
         </ParallaxBlock>

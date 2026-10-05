@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Registration, Event } from '../types';
 import EventCard from '../components/EventCard';
-import { Calendar, Ticket, User, Bell } from 'lucide-react';
+import { Calendar, Ticket, Bell } from 'lucide-react';
 import toast from 'react-hot-toast';
 import QRCode from 'react-qr-code';
 

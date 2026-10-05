@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -122,12 +122,12 @@ export default function EventDetailPage() {
 
   const fillPct = Math.min(100, (regCount / event.capacity) * 100);
 
-  function RegistrationSection() {
-    if (event.is_archived || isPast) return (
+  function RegistrationSection({ ev }: { ev: Event }) {
+    if (ev.is_archived || isPast) return (
       <div className="card" style={{ padding: '1.5rem', textAlign: 'center' }}>
         <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🏁</div>
         <p style={{ fontWeight: 700 }}>This event has ended.</p>
-        {event.is_archived && (
+        {ev.is_archived && (
           <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)', marginTop: '0.25rem' }}>It now lives in the archives.</p>
         )}
       </div>
@@ -305,7 +305,7 @@ export default function EventDetailPage() {
           {/* ── Right sidebar ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
             {/* Registration CTA */}
-            <RegistrationSection />
+            <RegistrationSection ev={event} />
 
             {/* Capacity bar */}
             <div className="card" style={{ padding: '1.25rem' }}>

@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import { ErrorBoundary } from 'react-error-boundary';
+import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { AnimatePresence, motion } from 'motion/react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Navbar from './components/Navbar';
@@ -125,12 +125,13 @@ function RootRoutes() {
 }
 
 
-function ErrorFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) {
+function ErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
+  const message = error instanceof Error ? error.message : 'Unknown error';
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', background: 'var(--off-white)', padding: '1rem', textAlign: 'center' }}>
       <div style={{ fontSize: '3rem' }}>⚠️</div>
       <h2 style={{ fontWeight: 700 }}>Something went wrong</h2>
-      <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)', maxWidth: 440 }}>{error.message}</p>
+      <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)', maxWidth: 440 }}>{message}</p>
       <button className="btn btn-primary" onClick={resetErrorBoundary}>Try again</button>
     </div>
   );
