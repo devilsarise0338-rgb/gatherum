@@ -1,4 +1,4 @@
-﻿
+
 -- Update the archival function to 1 hour instead of 24 hours
 CREATE OR REPLACE FUNCTION archive_old_events()
 RETURNS void AS $$

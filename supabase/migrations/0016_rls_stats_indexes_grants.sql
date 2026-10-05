@@ -116,6 +116,6 @@ BEGIN
     PERFORM cron.unschedule('auto-archive-events');
   END IF;
   PERFORM cron.schedule('auto-archive-events', '0 * * * *', 'SELECT archive_old_events()');
-EXCEPTION WHEN undefined_schema THEN
+EXCEPTION WHEN invalid_schema_name THEN
   RAISE NOTICE 'pg_cron schema unavailable here; skipping archive schedule';
 END $$;
