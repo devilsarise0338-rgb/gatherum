@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { ArrowLeft, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { IDetectedBarcode, Scanner } from '@yudiel/react-qr-scanner';
-import toast from 'react-hot-toast';
 
 type ScanResult = { type: 'success' | 'error' | 'warn'; message: string; name?: string } | null;
 
@@ -11,6 +10,7 @@ export default function CheckInPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
   const [eventTitle, setEventTitle] = useState('');
+  const [eventMissing, setEventMissing] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult>(null);
   const [scanning, setScanning] = useState(true);
   const [manualId, setManualId] = useState('');
@@ -19,20 +19,25 @@ export default function CheckInPage() {
   useEffect(() => {
     if (eventId) {
       supabase.from('events').select('title').eq('id', eventId).single()
-        .then(({ data }) => { if (data) setEventTitle(data.title ?? ''); });
+        .then(({ data, error }) => {
+          if (error || !data) setEventMissing(true);
+          else setEventTitle(data.title ?? '');
+        });
     }
   }, [eventId]);
 
   async function checkIn(ticketId: string) {
+    if (!eventId) return;
     setScanResult(null);
     setScanning(false);
-    const { data, error } = await supabase.rpc('check_in_by_ticket', { p_ticket_id: ticketId });
+    const { data, error } = await supabase.rpc('check_in_by_ticket', { p_ticket_id: ticketId, p_event_id: eventId });
     if (error) {
       setScanResult({ type: 'error', message: error.message });
     } else {
       if (data === 'success') setScanResult({ type: 'success', message: 'Check-in successful! ✓' });
       else if (data === 'already_checked_in') setScanResult({ type: 'warn', message: 'Already checked in.' });
       else if (data === 'not_found') setScanResult({ type: 'error', message: 'Ticket not found.' });
+      else if (data === 'event_mismatch') setScanResult({ type: 'error', message: 'This ticket belongs to a different event.' });
       else if (data === 'unauthorized') setScanResult({ type: 'error', message: 'Not authorized for this event.' });
       else setScanResult({ type: 'error', message: `Unexpected: ${data}` });
     }
@@ -69,6 +74,18 @@ export default function CheckInPage() {
         </div>
       </div>
 
+      {eventMissing ? (
+        <div className="container" style={{ padding: '2rem 1.5rem', maxWidth: 600 }}>
+          <div className="card" style={{ padding: '2.5rem', textAlign: 'center' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🔍</div>
+            <p style={{ fontWeight: 700, marginBottom: '0.25rem' }}>Event not found</p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)', marginBottom: '1.25rem' }}>
+              This check-in link is invalid or you no longer have access to this event.
+            </p>
+            <button className="btn btn-primary" onClick={() => navigate('/organizer')}>Back to Dashboard</button>
+          </div>
+        </div>
+      ) : (
       <div className="container" style={{ padding: '2rem 1.5rem', maxWidth: 600 }}>
         {/* Mode tabs */}
         <div className="tabs">
@@ -119,6 +136,7 @@ export default function CheckInPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

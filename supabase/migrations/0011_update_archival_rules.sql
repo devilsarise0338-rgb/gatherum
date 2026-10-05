@@ -1,7 +1,7 @@
 ﻿
 -- Update the archival function to 1 hour instead of 24 hours
 CREATE OR REPLACE FUNCTION archive_old_events()
-RETURNS void AS \$\$
+RETURNS void AS $$
 BEGIN
   UPDATE events 
   SET is_archived = true
@@ -12,5 +12,5 @@ BEGIN
       (end_time IS NULL AND start_time < now() - interval '1 hour')
     );
 END;
-\$\$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
