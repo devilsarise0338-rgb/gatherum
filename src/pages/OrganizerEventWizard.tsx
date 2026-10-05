@@ -45,12 +45,15 @@ export default function OrganizerEventWizard() {
 
   const [form, setForm] = useState<EventForm>(EMPTY);
   const [loading, setLoading] = useState(!isNew);
+  const [notFound, setNotFound] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!isNew && id) {
-      supabase.from('events').select('*').eq('id', id).single().then(({ data }) => {
-        if (data) {
+      supabase.from('events').select('*').eq('id', id).single().then(({ data, error }) => {
+        if (error || !data) {
+          setNotFound(true);
+        } else {
           setForm({
             title: data.title ?? '',
             description: data.description ?? '',
@@ -110,6 +113,9 @@ export default function OrganizerEventWizard() {
     if (!form.start_time) { toast.error('Start time is required'); return; }
     const cap = parseInt(form.capacity);
     if (isNaN(cap) || cap < 1) { toast.error('Capacity must be ≥ 1'); return; }
+    if (form.end_time && new Date(form.end_time) <= new Date(form.start_time)) {
+      toast.error('End time must be after start time.'); return;
+    }
 
     setSaving(true);
     const payload = {
@@ -131,12 +137,24 @@ export default function OrganizerEventWizard() {
       if (error) toast.error(error.message);
       else { toast.success(publish ? 'Event published!' : 'Event saved as draft!'); navigate('/organizer'); }
     } else {
-      const { error } = await supabase.from('events').update(payload).eq('id', id);
+      // .select() returns the updated rows: empty means RLS blocked the write
+      // or the event no longer exists — don't report false success.
+      const { data, error } = await supabase.from('events').update(payload).eq('id', id).select('id');
       if (error) toast.error(error.message);
+      else if (!data || data.length === 0) toast.error('Update failed: event not found or not authorized.');
       else { toast.success('Event updated!'); navigate('/organizer'); }
     }
     setSaving(false);
   }
+
+  if (notFound) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', background: 'var(--off-white)' }}>
+      <div style={{ fontSize: '4rem' }}>🔍</div>
+      <h2 style={{ fontWeight: 700 }}>Event not found</h2>
+      <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)' }}>It may have been deleted, or you don't own it.</p>
+      <button className="btn btn-ghost" onClick={() => navigate('/organizer')}>Back to Dashboard</button>
+    </div>
+  );
 
   if (loading) return <div className="page-loader"><div className="spinner" /></div>;
 

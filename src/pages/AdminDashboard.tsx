@@ -17,7 +17,14 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
-  const [stats, setStats] = useState({ regs: 0 });
+  const [stats, setStats] = useState({ users: 0, events: 0, regs: 0 });
+  // Pagination: page index per tab; each fetch loads PAGE+1 rows to detect more.
+  const [userPage, setUserPage] = useState(0);
+  const [eventPage, setEventPage] = useState(0);
+  const [auditPage, setAuditPage] = useState(0);
+  const [hasMoreUsers, setHasMoreUsers] = useState(false);
+  const [hasMoreEvents, setHasMoreEvents] = useState(false);
+  const [hasMoreAudit, setHasMoreAudit] = useState(false);
 
   const [settingsForm, setSettingsForm] = useState({
     signups_enabled: true,
@@ -25,27 +32,20 @@ export default function AdminDashboard() {
     maintenance_mode: false,
   });
 
+  // Page sizes: users 50, events 25, audit 50.
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-
-      const [usersRes, eventsRes, settingsRes, auditRes, regsRes] = await Promise.all([
-        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-        supabase.from('events').select('*, registrations(count)').order('created_at', { ascending: false }),
+    async function loadOverview() {
+      const [usersCount, eventsCount, regsCount, settingsRes] = await Promise.all([
+        supabase.from('profiles').select('id', { count: 'exact', head: true }),
+        supabase.from('events').select('id', { count: 'exact', head: true }),
+        supabase.from('registrations').select('id', { count: 'exact', head: true }),
         supabase.from('platform_settings').select('*').eq('id', 1).single(),
-        supabase.from('audit_log').select('*').order('created_at', { ascending: false }).limit(50),
-        supabase.from('registrations').select('*', { count: 'exact', head: true })
       ]);
-
-      if (usersRes.data) setUsers(usersRes.data as Profile[]);
-      
-      if (eventsRes.data) {
-        setEvents(eventsRes.data.map((e: any) => ({
-          ...e,
-          registration_count: e.registrations?.[0]?.count ?? 0
-        })));
-      }
-
+      setStats({
+        users: usersCount.count ?? 0,
+        events: eventsCount.count ?? 0,
+        regs: regsCount.count ?? 0,
+      });
       if (settingsRes.data) {
         setSettings(settingsRes.data as PlatformSettings);
         setSettingsForm({
@@ -54,14 +54,63 @@ export default function AdminDashboard() {
           maintenance_mode: settingsRes.data.maintenance_mode,
         });
       }
-
-      if (auditRes.data) setAuditLog(auditRes.data);
-      if (regsRes.count !== null) setStats({ regs: regsRes.count });
-
       setLoading(false);
     }
-    load();
+    loadOverview();
   }, []);
+
+  // Users page via admin_fetch_users RPC (50/page). Search filters server-side.
+  useEffect(() => {
+    if (tab !== 'users') return;
+    async function loadUsers() {
+      setLoading(true);
+      const PAGE = 50;
+      let q = supabase.rpc('admin_fetch_users');
+      if (search) {
+        const like = `%${search}%`;
+        q = q.or(`email.ilike.${like},full_name.ilike.${like},roll_number.ilike.${like}`);
+      }
+      const { data } = await q.range(userPage * PAGE, userPage * PAGE + PAGE);
+      setHasMoreUsers((data?.length ?? 0) > PAGE);
+      setUsers(((data ?? []).slice(0, PAGE)) as Profile[]);
+      setLoading(false);
+    }
+    loadUsers();
+  }, [tab, userPage, search]);
+
+  // Events page (25/page). Counts come from DB trigger columns.
+  useEffect(() => {
+    if (tab !== 'events') return;
+    async function loadEvents() {
+      setLoading(true);
+      const PAGE = 25;
+      let q = supabase.from('events').select('*').order('created_at', { ascending: false });
+      if (search) q = q.ilike('title', `%${search}%`);
+      const { data } = await q.range(eventPage * PAGE, eventPage * PAGE + PAGE);
+      setHasMoreEvents((data?.length ?? 0) > PAGE);
+      setEvents(((data ?? []).slice(0, PAGE)) as Event[]);
+      setLoading(false);
+    }
+    loadEvents();
+  }, [tab, eventPage, search]);
+
+  // Audit page (50/page, newest first).
+  useEffect(() => {
+    if (tab !== 'audit') return;
+    async function loadAudit() {
+      setLoading(true);
+      const PAGE = 50;
+      const { data } = await supabase
+        .from('audit_log')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .range(auditPage * PAGE, auditPage * PAGE + PAGE);
+      setHasMoreAudit((data?.length ?? 0) > PAGE);
+      setAuditLog((data ?? []).slice(0, PAGE));
+      setLoading(false);
+    }
+    loadAudit();
+  }, [tab, auditPage]);
 
   async function updateRole(userId: string, role: 'student' | 'organizer' | 'admin') {
     const { error } = await supabase.rpc('admin_update_user_role', { p_user_id: userId, p_role: role });
@@ -103,17 +152,9 @@ export default function AdminDashboard() {
     }
   }
 
-  const filteredUsers = users.filter(u =>
-    !search ||
-    (u.email ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    (u.full_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    (u.roll_number ?? '').toLowerCase().includes(search.toLowerCase())
-  );
-
-  const filteredEvents = events.filter(e =>
-    !search ||
-    (e.title ?? '').toLowerCase().includes(search.toLowerCase())
-  );
+  // Search is server-side (RPC/table filters); page rows are shown as-is.
+  const filteredUsers = users;
+  const filteredEvents = events;
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--off-white)' }}>
@@ -134,16 +175,16 @@ export default function AdminDashboard() {
           <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>
             <BarChart2 size={14} style={{ display: 'inline', marginRight: 4 }} /> Overview
           </button>
-          <button className={`tab ${tab === 'users' ? 'active' : ''}`} onClick={() => setTab('users')}>
-            <Users size={14} style={{ display: 'inline', marginRight: 4 }} /> Users ({users.length})
+          <button className={`tab ${tab === 'users' ? 'active' : ''}`} onClick={() => { setUserPage(0); setTab('users'); }}>
+            <Users size={14} style={{ display: 'inline', marginRight: 4 }} /> Users ({stats.users})
           </button>
-          <button className={`tab ${tab === 'events' ? 'active' : ''}`} onClick={() => setTab('events')}>
-            <Calendar size={14} style={{ display: 'inline', marginRight: 4 }} /> Events ({events.length})
+          <button className={`tab ${tab === 'events' ? 'active' : ''}`} onClick={() => { setEventPage(0); setTab('events'); }}>
+            <Calendar size={14} style={{ display: 'inline', marginRight: 4 }} /> Events ({stats.events})
           </button>
           <button className={`tab ${tab === 'settings' ? 'active' : ''}`} onClick={() => setTab('settings')}>
             <Settings size={14} style={{ display: 'inline', marginRight: 4 }} /> Settings
           </button>
-          <button className={`tab ${tab === 'audit' ? 'active' : ''}`} onClick={() => setTab('audit')}>
+          <button className={`tab ${tab === 'audit' ? 'active' : ''}`} onClick={() => { setAuditPage(0); setTab('audit'); }}>
             <Shield size={14} style={{ display: 'inline', marginRight: 4 }} /> Audit Log
           </button>
         </div>
@@ -156,19 +197,17 @@ export default function AdminDashboard() {
           <div className="bento-grid">
             <div className="card" style={{ padding: '2rem' }}>
               <div style={{ color: 'var(--ink-muted)', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.5rem' }}>TOTAL USERS</div>
-              <div style={{ fontSize: '3rem', fontWeight: 800 }}>{users.length}</div>
-              <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', fontSize: '0.875rem' }}>
-                <div><span style={{ color: 'var(--ink-muted)' }}>Students:</span> {users.filter(u => u.role === 'student').length}</div>
-                <div><span style={{ color: 'var(--ink-muted)' }}>Organizers:</span> {users.filter(u => u.role === 'organizer').length}</div>
+              <div style={{ fontSize: '3rem', fontWeight: 800 }}>{stats.users}</div>
+              <div style={{ marginTop: '1rem', fontSize: '0.875rem', color: 'var(--ink-muted)' }}>
+                Open the Users tab to manage roles and bans.
               </div>
             </div>
-            
+
             <div className="card" style={{ padding: '2rem' }}>
               <div style={{ color: 'var(--ink-muted)', fontWeight: 600, fontSize: '0.875rem', marginBottom: '0.5rem' }}>TOTAL EVENTS</div>
-              <div style={{ fontSize: '3rem', fontWeight: 800 }}>{events.length}</div>
-              <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', fontSize: '0.875rem' }}>
-                <div><span style={{ color: 'var(--ink-muted)' }}>Active:</span> {events.filter(e => !e.is_unpublished && !isEventAutoArchived(e)).length}</div>
-                <div><span style={{ color: 'var(--ink-muted)' }}>Archived:</span> {events.filter(e => isEventAutoArchived(e)).length}</div>
+              <div style={{ fontSize: '3rem', fontWeight: 800 }}>{stats.events}</div>
+              <div style={{ marginTop: '1rem', fontSize: '0.875rem', color: 'var(--ink-muted)' }}>
+                Open the Events tab to moderate.
               </div>
             </div>
 
@@ -182,7 +221,7 @@ export default function AdminDashboard() {
             <div style={{ position: 'relative', maxWidth: 360, marginBottom: '1.5rem' }}>
               <Search size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-muted)' }} />
               <input className="input" style={{ paddingLeft: '2.25rem' }} placeholder="Search users…"
-                value={search} onChange={e => setSearch(e.target.value)} />
+                value={search} onChange={e => { setUserPage(0); setSearch(e.target.value); }} />
             </div>
 
             <div className="table-wrapper">
@@ -235,13 +274,18 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', alignItems: 'center' }}>
+              <button className="btn btn-ghost btn-sm" disabled={userPage === 0} onClick={() => setUserPage(p => Math.max(0, p - 1))}>← Prev</button>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--ink-muted)' }}>Page {userPage + 1} · 50 per page</span>
+              <button className="btn btn-ghost btn-sm" disabled={!hasMoreUsers} onClick={() => setUserPage(p => p + 1)}>Next →</button>
+            </div>
           </div>
         ) : tab === 'events' ? (
           <div>
             <div style={{ position: 'relative', maxWidth: 360, marginBottom: '1.5rem' }}>
               <Search size={15} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-muted)' }} />
               <input className="input" style={{ paddingLeft: '2.25rem' }} placeholder="Search events…"
-                value={search} onChange={e => setSearch(e.target.value)} />
+                value={search} onChange={e => { setEventPage(0); setSearch(e.target.value); }} />
             </div>
 
             <div className="table-wrapper">
@@ -268,7 +312,7 @@ export default function AdminDashboard() {
                           {ev.start_time ? new Date(ev.start_time).toLocaleDateString() : '—'}
                         </td>
                         <td>
-                          <span style={{ fontWeight: 700 }}>{ev.registration_count}</span>
+                          <span style={{ fontWeight: 700 }}>{ev.registered_count ?? 0}</span>
                           <span style={{ color: 'var(--ink-muted)', fontSize: '0.75rem' }}> / {ev.capacity}</span>
                         </td>
                         <td>
@@ -287,6 +331,11 @@ export default function AdminDashboard() {
                   })}
                 </tbody>
               </table>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', alignItems: 'center' }}>
+              <button className="btn btn-ghost btn-sm" disabled={eventPage === 0} onClick={() => setEventPage(p => Math.max(0, p - 1))}>← Prev</button>
+              <span style={{ fontSize: '0.8125rem', color: 'var(--ink-muted)' }}>Page {eventPage + 1} · 25 per page</span>
+              <button className="btn btn-ghost btn-sm" disabled={!hasMoreEvents} onClick={() => setEventPage(p => p + 1)}>Next →</button>
             </div>
           </div>
         ) : tab === 'settings' ? (
@@ -323,6 +372,7 @@ export default function AdminDashboard() {
           </div>
         ) : (
           /* Audit log */
+          <div>
           <div className="table-wrapper">
             <table className="table">
               <thead>
@@ -348,6 +398,12 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table>
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', alignItems: 'center' }}>
+            <button className="btn btn-ghost btn-sm" disabled={auditPage === 0} onClick={() => setAuditPage(p => Math.max(0, p - 1))}>← Prev</button>
+            <span style={{ fontSize: '0.8125rem', color: 'var(--ink-muted)' }}>Page {auditPage + 1} · 50 per page</span>
+            <button className="btn btn-ghost btn-sm" disabled={!hasMoreAudit} onClick={() => setAuditPage(p => p + 1)}>Next →</button>
+          </div>
           </div>
         )}
       </div>

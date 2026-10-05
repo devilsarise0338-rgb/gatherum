@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
-import { Event, Registration, RegistrationStatus } from '../types';
+import { Event, Registration } from '../types';
 import SafeImage from '../components/SafeImage';
 import {
   Calendar, Clock, MapPin, Users, ArrowLeft,
@@ -20,30 +20,36 @@ function fmtTime(iso: string) {
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
 
   const [event, setEvent] = useState<Event | null>(null);
+  const [organizerName, setOrganizerName] = useState<string | null>(null);
   const [myReg, setMyReg] = useState<Registration | null>(null);
-  const [regCount, setRegCount] = useState(0);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
   async function fetchEvent() {
     if (!id) return;
+    setFetchError(null);
+    // No profiles join: anon/students cannot read profiles. Organizer display
+    // name comes from the public-safe summary RPC instead.
     const { data, error } = await supabase
       .from('events')
-      .select('*, organizer:profiles!events_organizer_id_fkey(full_name, avatar_url, email)')
+      .select('*')
       .eq('id', id)
       .single();
-    if (error || !data) { setLoading(false); return; }
+    if (error || !data) {
+      setFetchError(error?.message ?? 'Event not found.');
+      setLoading(false);
+      return;
+    }
     setEvent(data as Event);
 
-    const { count } = await supabase
-      .from('registrations')
-      .select('id', { count: 'exact' })
-      .eq('event_id', id)
-      .in('status', ['registered', 'attended']);
-    setRegCount(count ?? 0);
+    const { data: org } = await supabase
+      .rpc('get_event_organizer_summary', { p_event_id: id })
+      .maybeSingle();
+    if (org) setOrganizerName((org as unknown as { full_name: string | null }).full_name);
 
     if (user) {
       const { data: reg } = await supabase
@@ -98,6 +104,9 @@ export default function EventDetailPage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem' }}>
       <div style={{ fontSize: '4rem' }}>🔍</div>
       <h2 style={{ fontWeight: 700 }}>Event not found</h2>
+      {fetchError && (
+        <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)', maxWidth: 420, textAlign: 'center' }}>{fetchError}</p>
+      )}
       <button className="btn btn-ghost" onClick={() => navigate('/events')}><ArrowLeft size={16} /> Back to Events</button>
     </div>
   );
@@ -106,16 +115,21 @@ export default function EventDetailPage() {
   const endTime = event.end_time ? new Date(event.end_time) : new Date(event.start_time);
   const isPast = endTime < now;
   const isDeadlinePast = event.registration_deadline ? new Date(event.registration_deadline) < now : false;
+  // Single seat definition: DB trigger counter (registered + attended).
+  const regCount = event.registered_count ?? 0;
   const isFull = regCount >= event.capacity;
   const activeStatus = myReg?.status;
 
   const fillPct = Math.min(100, (regCount / event.capacity) * 100);
 
   function RegistrationSection() {
-    if (isPast) return (
+    if (event.is_archived || isPast) return (
       <div className="card" style={{ padding: '1.5rem', textAlign: 'center' }}>
         <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🏁</div>
         <p style={{ fontWeight: 700 }}>This event has ended.</p>
+        {event.is_archived && (
+          <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)', marginTop: '0.25rem' }}>It now lives in the archives.</p>
+        )}
       </div>
     );
 
@@ -238,18 +252,18 @@ export default function EventDetailPage() {
               {event.title ?? 'Untitled Event'}
             </h1>
 
-            {/* Organizer */}
-            {(event as any).organizer && (
+            {/* Organizer (public-safe: name only, no profile read) */}
+            {organizerName && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', padding: '0.75rem', background: 'var(--cream)', border: '2px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
-                <img
-                  src={(event as any).organizer.avatar_url || `https://api.dicebear.com/7.x/shapes/svg?seed=${event.organizer_id}`}
-                  alt="Organizer"
+                <div
                   className="avatar avatar-sm"
-                  style={{ background: 'var(--white)' }}
-                  onError={e => (e.currentTarget.style.display = 'none')}
-                />
+                  style={{ background: 'var(--yellow)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}
+                  aria-hidden
+                >
+                  {(organizerName ?? 'O').charAt(0).toUpperCase()}
+                </div>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{(event as any).organizer.full_name ?? 'Organizer'}</div>
+                  <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>{organizerName}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--ink-muted)' }}>Event Organizer</div>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { ErrorBoundary } from 'react-error-boundary';
 import { AnimatePresence, motion } from 'motion/react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Navbar from './components/Navbar';
@@ -33,7 +34,17 @@ function RequireAuth({ children, role, allowIncomplete }: { children: React.Reac
 
   if (!user) return <Navigate to="/auth" state={{ from: location }} replace />;
 
-  if (profile?.is_banned) {
+  // Never render guarded pages blind: no profile yet means still resolving
+  // (failed fetches sign out via AuthContext, landing back on /auth).
+  if (!profile) {
+    return (
+      <div className="page-loader">
+        <div className="spinner" />
+      </div>
+    );
+  }
+
+  if (profile.is_banned) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', background: 'var(--off-white)' }}>
         <div style={{ fontSize: '3rem' }}>🚫</div>
@@ -44,13 +55,13 @@ function RequireAuth({ children, role, allowIncomplete }: { children: React.Reac
   }
 
   // Force profile completion for new users
-  if (!allowIncomplete && profile && !profile.profile_completed) {
+  if (!allowIncomplete && !profile.profile_completed) {
     return <Navigate to="/profile" state={{ from: location, mustComplete: true }} replace />;
   }
 
   if (role) {
     const allowed = Array.isArray(role) ? role : [role];
-    if (profile && !allowed.includes(profile.role)) {
+    if (!allowed.includes(profile.role)) {
       return <Navigate to="/" replace />;
     }
   }
@@ -114,11 +125,24 @@ function RootRoutes() {
 }
 
 
+function ErrorFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) {
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', background: 'var(--off-white)', padding: '1rem', textAlign: 'center' }}>
+      <div style={{ fontSize: '3rem' }}>⚠️</div>
+      <h2 style={{ fontWeight: 700 }}>Something went wrong</h2>
+      <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)', maxWidth: 440 }}>{error.message}</p>
+      <button className="btn btn-primary" onClick={resetErrorBoundary}>Try again</button>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <RootRoutes />
+        <ErrorBoundary FallbackComponent={ErrorFallback}>
+          <RootRoutes />
+        </ErrorBoundary>
         <Toaster
           position="bottom-right"
           toastOptions={{

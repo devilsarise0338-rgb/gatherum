@@ -46,9 +46,8 @@ export default function EventCard({ event }: { event: Event }) {
 
   const emoji = CATEGORY_EMOJI[event.category ?? ''] ?? '📅';
   const isPast = new Date(event.end_time ?? event.start_time) < new Date();
-  const isFull = event.registration_count !== undefined
-    ? event.registration_count >= event.capacity
-    : false;
+  const taken = event.registered_count ?? 0;
+  const isFull = taken >= event.capacity;
 
   return (
     <div
@@ -88,7 +87,7 @@ export default function EventCard({ event }: { event: Event }) {
           )}
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
             <Users size={13} />
-            {event.registration_count ?? 0} / {event.capacity} seats
+            {taken} / {event.capacity} seats
           </span>
         </div>
       </div>

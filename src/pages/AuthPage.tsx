@@ -16,19 +16,23 @@ export default function AuthPage() {
   const [sent, setSent] = useState(false);
 
   const allowedDomain = import.meta.env.VITE_ALLOWED_EMAIL_DOMAIN ?? '@poornima.org';
+  // Google OAuth is hidden by default; enable with VITE_ENABLE_GOOGLE_OAUTH=true
+  // after configuring the provider + redirect URL in the Supabase dashboard.
+  const googleEnabled = import.meta.env.VITE_ENABLE_GOOGLE_OAUTH === 'true';
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
 
+    if (!email.endsWith(allowedDomain)) {
+      toast.error(`Only ${allowedDomain} emails are allowed.`);
+      setLoading(false);
+      return;
+    }
     if (mode === 'signup') {
-      if (!email.endsWith(allowedDomain)) {
-        toast.error(`Only ${allowedDomain} emails are allowed.`);
-        setLoading(false);
-        return;
-      }
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) toast.error(error.message);
+      else if (data.session) navigate('/');
       else { setSent(true); toast.success('Check your email to confirm your account!'); }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -110,11 +114,9 @@ export default function AuthPage() {
                   autoComplete="email"
                 />
               </div>
-              {mode === 'signup' && (
-                <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', color: 'var(--ink-muted)' }}>
-                  Only {allowedDomain} emails allowed.
-                </div>
-              )}
+              <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', color: 'var(--ink-muted)' }}>
+                Only {allowedDomain} emails allowed.
+              </div>
             </div>
 
             <div className="form-group">
@@ -152,21 +154,26 @@ export default function AuthPage() {
             </button>
           </form>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '1.5rem 0' }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-            <div style={{ fontSize: '0.8125rem', color: 'var(--ink-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Or continue with</div>
-            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          </div>
+          {googleEnabled && (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '1.5rem 0' }}>
+                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                <div style={{ fontSize: '0.8125rem', color: 'var(--ink-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Or continue with</div>
+                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              </div>
 
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{ width: '100%', padding: '0.875rem', border: '2px solid var(--border)' }}
-            onClick={async () => {
-              const { error } = await supabase.auth.signInWithOAuth({ provider: 'google' });
-              if (error) toast.error(error.message);
-            }}
-          >
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ width: '100%', padding: '0.875rem', border: '2px solid var(--border)' }}
+                onClick={async () => {
+                  const { error } = await supabase.auth.signInWithOAuth({
+                    provider: 'google',
+                    options: { redirectTo: `${window.location.origin}/` },
+                  });
+                  if (error) toast.error(error.message);
+                }}
+              >
             <svg viewBox="0 0 24 24" width="18" height="18" xmlns="http://www.w3.org/2000/svg">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -175,6 +182,8 @@ export default function AuthPage() {
             </svg>
             Google
           </button>
+            </>
+          )}
         </div>
 
         <p style={{ textAlign: 'center', marginTop: '1.25rem', fontSize: '0.875rem', color: 'var(--ink-muted)' }}>

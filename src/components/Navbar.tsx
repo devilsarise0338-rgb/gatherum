@@ -75,40 +75,20 @@ export default function Navbar() {
           )}
         </ul>
 
-        {/* Mobile hamburger */}
+        {/* Mobile hamburger (visibility handled in index.css) */}
         <button
           className="btn btn-ghost btn-sm"
-          style={{ display: 'none' }}
           id="mobile-menu-btn"
           onClick={() => setMenuOpen(o => !o)}
           aria-label="Toggle menu"
         >
           {menuOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
-
-        <style>{`
-          @media (max-width: 768px) {
-            #mobile-menu-btn { display: flex !important; }
-          }
-        `}</style>
       </div>
 
       {/* Mobile dropdown */}
       {menuOpen && (
-        <div style={{
-          position: 'absolute',
-          top: '100%',
-          left: 0,
-          right: 0,
-          background: 'var(--white)',
-          borderTop: '2px solid var(--border)',
-          boxShadow: '0 8px 0 var(--border)',
-          zIndex: 99,
-          padding: '1rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '0.5rem',
-        }}>
+        <div className="mobile-menu">
           {links.map(l => (
             <button
               key={l.path}

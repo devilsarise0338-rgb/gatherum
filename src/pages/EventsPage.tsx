@@ -19,10 +19,9 @@ export default function EventsPage() {
       setLoading(true);
       let q = supabase
         .from('events')
-        .select('*, registrations(count)')
+        .select('*')
         .eq('is_unpublished', false)
         .eq('is_archived', false)
-        .neq('registrations.status', 'cancelled')
         .order('start_time', { ascending: true })
         .gte('start_time', new Date(Date.now() - 86400000).toISOString());
 
@@ -30,12 +29,8 @@ export default function EventsPage() {
 
       const { data } = await q;
       if (data) {
-        const evts = data
-          .map((e: any) => ({
-            ...e,
-            registration_count: e.registrations?.[0]?.count ?? 0,
-          }))
-          .filter((e: any) => !isEventAutoArchived(e));
+        const evts = (data as Event[])
+          .filter((e) => !isEventAutoArchived(e));
         setEvents(evts);
       }
       setLoading(false);

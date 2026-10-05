@@ -38,7 +38,11 @@ export interface Event {
   // joined fields
   organizer?: Profile;
   registrations?: Registration[];
-  registration_count?: number;
+  // Canonical seat counts, maintained by DB triggers (see migrations 0002/0015).
+  // taken = registered_count (registered + attended occupy a seat),
+  // waitlist = waitlist_count. Do NOT reintroduce client-side counting.
+  registered_count: number;
+  waitlist_count: number;
 }
 
 export interface Registration {
@@ -48,6 +52,7 @@ export interface Registration {
   status: RegistrationStatus;
   ticket_id: string;
   attended: boolean;
+  checked_in_at: string | null;
   created_at: string;
   // joined fields
   event?: Event;

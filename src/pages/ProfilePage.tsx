@@ -112,6 +112,7 @@ export default function ProfilePage() {
               alt="Avatar"
               className="avatar avatar-lg"
               style={{ background: 'var(--white)' }}
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
             <div>
               <div className="tag" style={{ background: profile.role === 'admin' ? 'var(--red)' : profile.role === 'organizer' ? 'var(--yellow)' : 'var(--white)', marginBottom: '0.375rem' }}>

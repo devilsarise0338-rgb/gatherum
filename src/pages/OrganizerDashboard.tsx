@@ -23,16 +23,12 @@ export default function OrganizerDashboard() {
       setLoading(true);
       const { data } = await supabase
         .from('events')
-        .select('*, registrations(count)')
+        .select('*')
         .eq('organizer_id', profile!.id)
-        .neq('registrations.status', 'cancelled')
         .order('created_at', { ascending: false });
 
       if (data) {
-        setEvents(data.map((e: any) => ({
-          ...e,
-          registration_count: e.registrations?.[0]?.count ?? 0,
-        })));
+        setEvents(data as Event[]);
       }
       setLoading(false);
     }
@@ -78,7 +74,7 @@ export default function OrganizerDashboard() {
   
   const shown = tab === 'published' ? published : tab === 'drafts' ? drafts : archived;
 
-  const totalRegs = events.reduce((a, e) => a + (e.registration_count ?? 0), 0);
+  const totalRegs = events.reduce((a, e) => a + (e.registered_count ?? 0), 0);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--off-white)' }}>
@@ -179,7 +175,7 @@ export default function OrganizerDashboard() {
                 {/* Registrations */}
                 <div style={{ textAlign: 'center', minWidth: 80 }}>
                   <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: '1.25rem', color: 'var(--red)' }}>
-                    {ev.registration_count ?? 0}
+                    {ev.registered_count ?? 0}
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--ink-muted)', fontWeight: 600 }}>/ {ev.capacity}</div>
                 </div>

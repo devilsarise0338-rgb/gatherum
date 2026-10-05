@@ -32,20 +32,17 @@ export default function StudentDashboard() {
 
       if (regs) setRegistrations(regs as Registration[]);
 
-      // Upcoming published events
+      // Upcoming published events (seat counts come from DB trigger columns)
       const { data: evts } = await supabase
         .from('events')
-        .select('*, registrations(count)')
+        .select('*')
         .eq('is_unpublished', false)
-        .neq('registrations.status', 'cancelled')
         .gte('start_time', new Date().toISOString())
         .order('start_time', { ascending: true })
         .limit(4);
 
       if (evts) {
-        setUpcomingEvents(evts.map((e: any) => ({
-          ...e, registration_count: e.registrations?.[0]?.count ?? 0,
-        })));
+        setUpcomingEvents(evts as unknown as Event[]);
       }
 
       setLoading(false);

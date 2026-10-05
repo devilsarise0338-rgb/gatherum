@@ -217,6 +217,7 @@ button, input, textarea, select {
 .badge-yellow { background: var(--yellow); color: var(--ink); }
 .badge-ink { background: var(--ink); color: var(--white); }
 .badge-white { background: var(--white); color: var(--ink); }
+.badge-green { background: #22C55E; color: var(--white); }
 
 /* --- Layout --- */
 .container {
@@ -374,6 +375,10 @@ button, input, textarea, select {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* Spinning inline icons (e.g. Loader2). Tailwind is not used; this replaces
+   the `animate-spin` utility class referenced in several pages. */
+.animate-spin { animation: spin 0.7s linear infinite; display: inline-flex; }
+
 /* --- Page loader --- */
 .page-loader {
   display: flex;
@@ -430,19 +435,26 @@ button, input, textarea, select {
 
 @media (max-width: 768px) {
   .nav-links { display: none; }
-  .nav-links.open {
-    display: flex;
-    flex-direction: column;
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: var(--white);
-    border-top: 2px solid var(--border);
-    padding: 1rem;
-    box-shadow: 0 8px 0 var(--border);
-    z-index: 99;
-  }
+}
+
+/* Single mobile-menu mechanism (driven by Navbar menuOpen state) */
+#mobile-menu-btn { display: none; }
+@media (max-width: 768px) {
+  #mobile-menu-btn { display: flex; }
+}
+.mobile-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--white);
+  border-top: 2px solid var(--border);
+  box-shadow: 0 8px 0 var(--border);
+  z-index: 99;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 /* --- Event Card --- */

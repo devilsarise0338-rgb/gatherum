@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
+
+// NOTE: the Tailwind Vite plugin was removed — src/index.css is hand-rolled
+// and never imports "tailwindcss", so the plugin contributed nothing.
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react()],
   resolve: {
     alias: {
       '@': new URL('./src', import.meta.url).pathname,

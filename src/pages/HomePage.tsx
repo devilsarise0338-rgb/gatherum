@@ -42,6 +42,7 @@ function FloatingImage({
   return (
     <motion.img
       src={src}
+      onError={(e) => { e.currentTarget.style.display = 'none'; }}
       initial={{ rotate }}
       style={{
         position: 'absolute',
@@ -281,7 +282,7 @@ export default function HomePage() {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const [featuredEvents, setFeaturedEvents] = useState<Event[]>([]);
-  const [stats, setStats] = useState({ events: 0, students: 0, orgs: 0 });
+  const [stats, setStats] = useState({ events: 0, registrations: 0, organizers: 0 });
 
   // Hero parallax
   const heroRef = useRef<HTMLElement>(null);
@@ -291,19 +292,23 @@ export default function HomePage() {
   const heroScale = useTransform(heroScroll, [0, 1], [1, 1.1]);
 
   useEffect(() => {
-    supabase.from('events').select('*, registrations(count)')
-      .eq('is_unpublished', false).neq('registrations.status', 'cancelled')
+    // Upcoming live events only (seat counts come from DB trigger columns).
+    supabase.from('events').select('*')
+      .eq('is_unpublished', false)
+      .eq('is_archived', false)
+      .gte('start_time', new Date().toISOString())
       .order('start_time', { ascending: true }).limit(6)
       .then(({ data }) => {
+        if (data) setFeaturedEvents(data as Event[]);
+      });
+    // Platform totals via aggregate-only RPC (profiles stay private).
+    supabase.rpc('get_public_platform_stats').single()
+      .then(({ data }) => {
         if (data) {
-          setFeaturedEvents(data.map((e: any) => ({ ...e, registration_count: e.registrations?.[0]?.count ?? 0 })));
-          setStats(s => ({ ...s, events: data.length }));
+          const s = data as unknown as { total_events: number; total_registrations: number; total_organizers: number };
+          setStats({ events: s.total_events ?? 0, registrations: s.total_registrations ?? 0, organizers: s.total_organizers ?? 0 });
         }
       });
-    supabase.from('profiles').select('id', { count: 'exact' }).eq('role', 'student')
-      .then(({ count }) => setStats(s => ({ ...s, students: count ?? 0 })));
-    supabase.from('profiles').select('id', { count: 'exact' }).eq('role', 'organizer')
-      .then(({ count }) => setStats(s => ({ ...s, orgs: count ?? 0 })));
   }, []);
 
   return (
@@ -519,9 +524,8 @@ export default function HomePage() {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.5rem' }}>
             <Counter to={stats.events} label="Live Events" color="var(--yellow)" />
-            <Counter to={stats.students} label="Students" color="var(--red)" />
-            <Counter to={stats.orgs} label="Organizers" color="#22C55E" />
-            <Counter to={stats.events * 12 || 0} label="Registrations" color="var(--yellow)" />
+            <Counter to={stats.registrations} label="Registrations" color="var(--red)" />
+            <Counter to={stats.organizers} label="Organizers" color="#22C55E" />
           </div>
         </div>
       </section>

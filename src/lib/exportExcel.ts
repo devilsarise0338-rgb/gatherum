@@ -1,11 +1,11 @@
 import { supabase } from './supabase';
 import * as XLSX from 'xlsx';
-import { Registration, Profile, Event } from '../types';
+import { Profile } from '../types';
 
 export async function exportEventParticipants(eventId: string, eventTitle: string, currentUserId: string) {
   try {
-    // 1. Verify Authorization
-    // We fetch the event explicitly to ensure the user is the organizer.
+    // 1. Verify Authorization — mirrors the registrations SELECT policy:
+    //    event organizer, team member, or admin may export.
     const { data: eventData, error: eventError } = await supabase
       .from('events')
       .select('organizer_id')
@@ -16,9 +16,17 @@ export async function exportEventParticipants(eventId: string, eventTitle: strin
       throw new Error('Event not found or unauthorized.');
     }
 
-    // Technically we could allow team members here too if event_team table existed.
-    // For now, only the primary organizer is checked.
-    if (eventData.organizer_id !== currentUserId) {
+    const [{ data: teamRow }, { data: me }] = await Promise.all([
+      supabase.from('event_team').select('id').eq('event_id', eventId).eq('user_id', currentUserId).maybeSingle(),
+      supabase.from('profiles').select('role').eq('id', currentUserId).single(),
+    ]);
+
+    const allowed =
+      eventData.organizer_id === currentUserId ||
+      !!teamRow ||
+      (me as unknown as { role?: string } | null)?.role === 'admin';
+
+    if (!allowed) {
       throw new Error('You are not authorized to export data for this event.');
     }
 
@@ -60,14 +68,14 @@ export async function exportEventParticipants(eventId: string, eventTitle: strin
           'Student Name': p.full_name || 'Unknown',
           'Roll Number': p.roll_number || 'N/A',
           'Branch': p.branch || 'N/A',
-          'Email': p.email || r.student_email || 'N/A',
+          'Email': p.email || 'N/A',
           'Phone': p.phone_number || 'N/A',
           'Registration Status': 'Registered',
           'Attendance Status': 'Present',
-          'Check-in Time': new Date(r.created_at).toLocaleString() // Note: No check_in_time field exists, fallback to created_at
+          'Check-in Time': r.checked_in_at ? new Date(r.checked_in_at).toLocaleString() : ''
         });
       }
-      
+
       // Waitlisted Students
       else if (r.status === 'waitlisted') {
         waitlistedRows.push({
@@ -75,7 +83,7 @@ export async function exportEventParticipants(eventId: string, eventTitle: strin
           'Student Name': p.full_name || 'Unknown',
           'Roll Number': p.roll_number || 'N/A',
           'Branch': p.branch || 'N/A',
-          'Email': p.email || r.student_email || 'N/A',
+          'Email': p.email || 'N/A',
           'Phone': p.phone_number || 'N/A',
           'Registration Status': 'Waitlisted',
           'Waitlisted At': new Date(r.created_at).toLocaleString()
