@@ -1,5 +1,8 @@
 import express from "express";
 import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+import cors from "cors";
+import { z } from "zod";
 import * as dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 
@@ -56,6 +59,29 @@ const adminSupabase = createClient(
 const app = express();
 
 app.set("trust proxy", 1);
+// Security headers (XSS filter, frame guards, content-type sniffing, ...).
+// CSP is left to Vercel/hosting config; the API serves JSON only.
+app.use(helmet());
+
+// CORS allowlist: same deployed origin (APP_URL) plus local dev ports.
+// Browsers calling from anywhere else get a CORS rejection, not data.
+const allowedOrigins = [
+  process.env.APP_URL,
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:3000",
+].filter((o): o is string => !!o);
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // No Origin header (curl, server-to-server) is not a browser threat.
+      if (!origin || allowedOrigins.includes(origin)) cb(null, true);
+      else cb(new Error(`CORS blocked for origin ${origin}`));
+    },
+  })
+);
+
 app.use(express.json());
 
 // ─── Rate limiters ───────────────────────────────────────────────────────────
@@ -104,6 +130,18 @@ const authMiddleware = async (
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
+    // Banned users are blocked in React, but the API must enforce it too:
+    // a suspended user with a still-valid JWT gets 403 here. Fail closed —
+    // a missing profile row is also rejected rather than trusted.
+    const { data: callerProfile } = await adminSupabase
+      .from("profiles")
+      .select("is_banned")
+      .eq("id", user.id)
+      .single();
+    if (!callerProfile || (callerProfile as { is_banned: boolean }).is_banned) {
+      res.status(403).json({ error: "Account suspended or not initialized" });
+      return;
+    }
     (req as any).user = user;
     next();
   } catch {
@@ -121,6 +159,10 @@ app.use("/api/", userLimiter);
 // Sends a magic-link email to a target user (admin only).
 // Security: caller's role is verified server-side via service-role client —
 // never trusting the caller's own JWT claim.
+const ResetAccessSchema = z.object({
+  targetEmail: z.string().email("A valid targetEmail is required"),
+});
+
 app.post("/api/admin/reset-user-access", async (req, res) => {
   try {
     const user = (req as any).user;
@@ -129,11 +171,12 @@ app.post("/api/admin/reset-user-access", async (req, res) => {
       return;
     }
 
-    const { targetEmail } = req.body;
-    if (!targetEmail) {
-      res.status(400).json({ error: "Target email required" });
+    const parsed = ResetAccessSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request body" });
       return;
     }
+    const { targetEmail } = parsed.data;
 
     // Verify the caller is actually an admin (server-side check, not trusting JWT role claim)
     const { data: profile, error: profileError } = await adminSupabase
@@ -178,11 +221,33 @@ app.post("/api/admin/reset-user-access", async (req, res) => {
     }
 
     res.json({ success: true, message: "Magic link sent successfully" });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Admin Reset Error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+// ─── JSON 404 + central error handler ─────────────────────────────────────────
+// Unknown /api/* paths return JSON (not the SPA's index.html) so API clients
+// get a parseable error. Placed after auth on purpose: unauthenticated
+// probes learn nothing beyond 401.
+app.use("/api/", (_req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+// Last resort: never leak stack traces to clients.
+app.use(
+  (
+    err: unknown,
+    _req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction
+  ) => {
+    console.error("Unhandled API error:", err);
+    if (res.headersSent) return;
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+);
 
 // ─── Default export ───────────────────────────────────────────────────────────
 // Vercel's Node builder wraps this export into a serverless function.

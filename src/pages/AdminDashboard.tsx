@@ -130,6 +130,29 @@ export default function AdminDashboard() {
     }
   }
 
+  // Sends a passwordless sign-in link via the Express API (admin only).
+  async function resetAccess(email: string | null) {
+    if (!email) { toast.error('No email on file for this user.'); return; }
+    if (!confirm(`Send a sign-in link to ${email}?`)) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { toast.error('Not signed in.'); return; }
+    try {
+      const res = await fetch('/api/admin/reset-user-access', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ targetEmail: email }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) toast.error((body as { error?: string }).error ?? 'Failed to send link.');
+      else toast.success('Sign-in link sent.');
+    } catch {
+      toast.error('Could not reach the API. Is it deployed?');
+    }
+  }
+
   async function saveSettings() {
     setSavingSettings(true);
     const { error } = await supabase.rpc('admin_update_settings', {
@@ -261,13 +284,22 @@ export default function AdminDashboard() {
                         </span>
                       </td>
                       <td>
-                        <button
-                          className={`btn btn-sm ${u.is_banned ? 'btn-secondary' : 'btn-ghost'}`}
-                          style={{ color: u.is_banned ? 'var(--ink)' : 'var(--red)' }}
-                          onClick={() => toggleBan(u.id, u.is_banned)}
-                        >
-                          {u.is_banned ? 'Unban' : 'Ban'}
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <button
+                            className={`btn btn-sm ${u.is_banned ? 'btn-secondary' : 'btn-ghost'}`}
+                            style={{ color: u.is_banned ? 'var(--ink)' : 'var(--red)' }}
+                            onClick={() => toggleBan(u.id, u.is_banned)}
+                          >
+                            {u.is_banned ? 'Unban' : 'Ban'}
+                          </button>
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            onClick={() => resetAccess(u.email)}
+                            title="Email this user a sign-in link"
+                          >
+                            Reset access
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
