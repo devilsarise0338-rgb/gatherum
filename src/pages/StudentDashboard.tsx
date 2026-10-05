@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Registration, Event } from '../types';
@@ -11,9 +11,11 @@ import QRCode from 'react-qr-code';
 export default function StudentDashboard() {
   const { profile } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Tab follows the URL so /student and /student/tickets render correctly.
+  const tab: 'overview' | 'tickets' = location.pathname.includes('/tickets') ? 'tickets' : 'overview';
   const [registrations, setRegistrations] = useState<Registration[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
-  const [tab, setTab] = useState<'overview' | 'tickets'>('overview');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -51,11 +53,10 @@ export default function StudentDashboard() {
     if (profile) load();
   }, [profile]);
 
-  async function cancelReg(regId: string) {
-    const { error } = await supabase
-      .from('registrations')
-      .update({ status: 'cancelled' })
-      .eq('id', regId);
+  async function cancelReg(eventId: string, regId: string) {
+    // cancel_registration takes the EVENT id (not the registration id) and
+    // runs as a SECURITY DEFINER RPC: direct UPDATEs have no RLS policy.
+    const { error } = await supabase.rpc('cancel_registration', { p_event_id: eventId });
     if (error) toast.error(error.message);
     else {
       toast.success('Registration cancelled.');
@@ -101,8 +102,8 @@ export default function StudentDashboard() {
 
         {/* Tabs */}
         <div className="tabs">
-          <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => setTab('overview')}>My Registrations</button>
-          <button className={`tab ${tab === 'tickets' ? 'active' : ''}`} onClick={() => setTab('tickets')}>
+          <button className={`tab ${tab === 'overview' ? 'active' : ''}`} onClick={() => navigate('/student')}>My Registrations</button>
+          <button className={`tab ${tab === 'tickets' ? 'active' : ''}`} onClick={() => navigate('/student/tickets')}>
             <Ticket size={14} style={{ display: 'inline', marginRight: 4 }} />
             Tickets
           </button>
@@ -141,9 +142,9 @@ export default function StudentDashboard() {
                         <span className={`badge ${reg.status === 'registered' ? 'badge-yellow' : reg.status === 'attended' ? 'badge-ink' : 'badge-white'}`}>
                           {reg.status}
                         </span>
-                        {reg.status === 'registered' && (
-                          <button className="btn btn-ghost btn-sm" onClick={() => cancelReg(reg.id)} style={{ color: 'var(--red)' }}>
-                            Cancel
+                        {(reg.status === 'registered' || reg.status === 'waitlisted') && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => cancelReg(reg.event_id, reg.id)} style={{ color: 'var(--red)' }}>
+                            {reg.status === 'waitlisted' ? 'Leave waitlist' : 'Cancel'}
                           </button>
                         )}
                       </div>

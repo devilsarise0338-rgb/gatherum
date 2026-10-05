@@ -58,90 +58,6 @@ function RequireAuth({ children, role, allowIncomplete }: { children: React.Reac
   return children;
 }
 
-function AppRoutes() {
-  const { session } = useAuth();
-
-  return (
-    <>
-      {/* Navbar shown on all pages except auth */}
-      <Routes>
-        <Route path="/auth" element={null} />
-        <Route path="*" element={<Navbar />} />
-      </Routes>
-
-      <Routes>
-        {/* Public */}
-        <Route path="/" element={<HomePage />} />
-        <Route path="/events" element={<EventsPage />} />
-        <Route path="/archives" element={<ArchivesPage />} />
-        <Route path="/events/:id" element={<EventDetailPage />} />
-        <Route
-          path="/auth"
-          element={session ? <Navigate to="/" replace /> : <AuthPage />}
-        />
-
-        {/* Student */}
-        <Route
-          path="/student"
-          element={<RequireAuth role={['student', 'organizer', 'admin']}><StudentDashboard /></RequireAuth>}
-        />
-        <Route
-          path="/student/tickets"
-          element={<RequireAuth role={['student', 'organizer', 'admin']}><StudentDashboard /></RequireAuth>}
-        />
-
-        {/* Organizer */}
-        <Route
-          path="/organizer"
-          element={<RequireAuth role={['organizer', 'admin']}><OrganizerDashboard /></RequireAuth>}
-        />
-        <Route
-          path="/organizer/events/new"
-          element={<RequireAuth role={['organizer', 'admin']}><OrganizerEventWizard /></RequireAuth>}
-        />
-        <Route
-          path="/organizer/events/:id"
-          element={<RequireAuth role={['organizer', 'admin']}><OrganizerEventWizard /></RequireAuth>}
-        />
-        <Route
-          path="/organizer/checkin/:eventId"
-          element={<RequireAuth role={['organizer', 'admin']}><CheckInPage /></RequireAuth>}
-        />
-
-        {/* Admin */}
-        <Route
-          path="/admin"
-          element={<RequireAuth role="admin"><AdminDashboard /></RequireAuth>}
-        />
-
-        {/* Profile */}
-        <Route
-          path="/profile"
-          element={<RequireAuth><ProfilePage /></RequireAuth>}
-        />
-
-        {/* Catch-all */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </>
-  );
-}
-
-/* ── The issue with rendering Navbar separately above Routes ── 
-   We render it INSIDE a layout wrapper instead. */
-function Layout() {
-  const location = useLocation();
-  const isAuth = location.pathname === '/auth';
-
-  return (
-    <>
-      {!isAuth && <Navbar />}
-      <AppRoutes />
-    </>
-  );
-}
-
-/* Simpler approach — just render Navbar + Routes sequentially */
 /* Page transition wrapper */
 function PageWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -169,6 +85,7 @@ function RootRoutes() {
           {/* Public */}
           <Route path="/" element={<PageWrapper><HomePage /></PageWrapper>} />
           <Route path="/events" element={<PageWrapper><EventsPage /></PageWrapper>} />
+          <Route path="/archives" element={<PageWrapper><ArchivesPage /></PageWrapper>} />
           <Route path="/events/:id" element={<PageWrapper><EventDetailPage /></PageWrapper>} />
           <Route path="/auth" element={session ? <Navigate to="/" replace /> : <PageWrapper><AuthPage /></PageWrapper>} />
 

@@ -136,7 +136,7 @@ export async function exportEventParticipants(eventId: string, eventTitle: strin
     XLSX.utils.book_append_sheet(wb, wsWaitlisted, 'Waitlisted Students');
 
     // 5. Generate and Download
-    const safeTitle = eventTitle.replace(/[\/\\:*?"<>|]/g, '').trim().replace(/\s+/g, '_');
+    const safeTitle = eventTitle.replace(/[/\\:*?"<>|]/g, '').trim().replace(/\s+/g, '_');
     const filename = `Gatherum_${safeTitle}_Participants.xlsx`;
 
     XLSX.writeFile(wb, filename);

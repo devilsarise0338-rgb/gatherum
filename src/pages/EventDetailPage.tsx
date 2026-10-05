@@ -75,14 +75,14 @@ export default function EventDetailPage() {
   async function handleCancel() {
     if (!user || !myReg) return;
     setActionLoading(true);
-    const { error } = await supabase
-      .from('registrations')
-      .update({ status: 'cancelled' })
-      .eq('id', myReg.id);
+    // cancel_registration takes the EVENT id (not the registration id) and
+    // runs as a SECURITY DEFINER RPC: direct UPDATEs have no RLS policy.
+    const { error } = await supabase.rpc('cancel_registration', { p_event_id: id });
     if (error) {
       toast.error(error.message);
     } else {
       toast.success('Registration cancelled.');
+      setMyReg(null);
       await fetchEvent();
     }
     setActionLoading(false);
