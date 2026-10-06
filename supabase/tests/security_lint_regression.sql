@@ -1,10 +1,11 @@
 -- supabase/tests/security_lint_regression.sql
--- Regression proof for the linter remediation (0021-0023 + private helpers).
--- RUN THIS ONLY AFTER 0021, 0022, 0023 ARE APPLIED (post-push state).
--- Pre-push it fails exactly 2 assertions: A6 storage listing (broad policy
--- still live) and D1 draft summary (owner branch still live). Anon RPC
--- rejections pass either way: anon lacks EXECUTE (gate denial), and the
--- bodies reject null JWTs as backup.
+-- Regression proof for the linter remediation (0021-0026 + private helpers).
+-- RUN THIS ONLY AFTER 0021-0026 ARE APPLIED (post-push state).
+-- Verified pre-push (2026-10-06, rolled back, zero leftovers): A1/A2/A3/A4/A5
+-- pass; A6 passes vacuously (bucket empty — the listing hole itself is proven
+-- by the live "Public Access" policy, closed by 0021); S1/S2/O1/M1/B3 pass;
+-- D1, B1, B2, G1, G2 fail exactly as predicted (each documents a hole the
+-- pending migrations close).
 --
 -- SAFE ANYWHERE: single transaction ending in ROLLBACK — nothing persists.
 -- Role switching uses SET LOCAL ROLE (works in DO blocks, verified live).
@@ -231,6 +232,91 @@ BEGIN
   SELECT role, is_banned INTO ro, b FROM profiles WHERE id = v_student;
   IF ro = 'organizer' AND b AND c > 0 THEN RAISE NOTICE 'M1 admin RPCs: PASS';
   ELSE RAISE EXCEPTION 'M1 admin RPCs: FAIL (%, %, %)', ro, b, c; END IF;
+END $$;
+
+-- ── B1 banned users cannot register (post-0024), cancelling stays open ────────
+DO $$
+DECLARE
+  v_student uuid := current_setting('sec.student')::uuid;
+  v_ev uuid := 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380c01';
+  st text;
+BEGIN
+  PERFORM set_config('app.allow_restricted_update', 'on', true);
+  UPDATE profiles SET is_banned = true WHERE id = v_student;
+  PERFORM set_config('app.allow_restricted_update', 'off', true);
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claims',
+    json_build_object('sub', v_student::text, 'role', 'authenticated')::text, true);
+  BEGIN PERFORM register_for_event(v_ev);
+    RAISE EXCEPTION 'B1 banned register: FAIL (allowed)';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%suspended%' THEN RAISE; END IF;
+  END;
+  -- Cancelling while banned stays allowed.
+  PERFORM cancel_registration(v_ev);
+  SELECT status INTO st FROM registrations WHERE event_id = v_ev AND user_id = v_student;
+  IF st != 'cancelled' THEN RAISE EXCEPTION 'B1 banned cancel: FAIL (%)', st; END IF;
+  RESET ROLE;
+  PERFORM set_config('app.allow_restricted_update', 'on', true);
+  UPDATE profiles SET is_banned = false WHERE id = v_student;
+  PERFORM set_config('app.allow_restricted_update', 'off', true);
+  RAISE NOTICE 'B1 banned register blocked, cancel open: PASS';
+END $$;
+
+-- ── B2 incomplete profiles cannot register (post-0024) ───────────────────────
+DO $$
+DECLARE
+  v_student uuid := current_setting('sec.student')::uuid;
+  v_ev uuid := 'c0eebc99-9c0b-4ef8-bb6d-6bb9bd380c01';
+BEGIN
+  UPDATE profiles SET profile_completed = false WHERE id = v_student;
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claims',
+    json_build_object('sub', v_student::text, 'role', 'authenticated')::text, true);
+  BEGIN PERFORM register_for_event(v_ev);
+    RAISE EXCEPTION 'B2 incomplete register: FAIL (allowed)';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%complete your profile%' THEN RAISE; END IF;
+  END;
+  RESET ROLE;
+  UPDATE profiles SET profile_completed = true WHERE id = v_student;
+  RAISE NOTICE 'B2 incomplete register blocked: PASS';
+END $$;
+
+-- ── B3 must_change_password is guard-locked like role/is_banned ──────────────
+DO $$
+DECLARE v_student uuid := current_setting('sec.student')::uuid;
+BEGIN
+  SET LOCAL ROLE authenticated;
+  PERFORM set_config('request.jwt.claims',
+    json_build_object('sub', v_student::text, 'role', 'authenticated')::text, true);
+  BEGIN UPDATE profiles SET must_change_password = true WHERE id = v_student;
+    RAISE EXCEPTION 'B3 must_change_password write: FAIL (allowed)';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%Cannot update restricted fields directly%' THEN RAISE; END IF;
+  END;
+  RESET ROLE;
+  RAISE NOTICE 'B3 must_change_password blocked: PASS';
+END $$;
+
+-- ── G1 mixed-case college email passes the trigger (post-0025) ───────────────
+DO $$ BEGIN
+  INSERT INTO auth.users(id, email) VALUES (gen_random_uuid(), 'SecMixed@Poornima.org');
+  IF NOT EXISTS (SELECT 1 FROM profiles WHERE email = 'SecMixed@Poornima.org') THEN
+    RAISE EXCEPTION 'G1 mixed-case signup: FAIL (no profile row)';
+  END IF;
+  DELETE FROM profiles WHERE email = 'SecMixed@Poornima.org';
+  DELETE FROM auth.users WHERE email = 'SecMixed@Poornima.org';
+  RAISE NOTICE 'G1 mixed-case signup: PASS';
+END $$;
+
+-- ── G2 non-college email rejected with the stable prefix (post-0025) ─────────
+DO $$ BEGIN
+  INSERT INTO auth.users(id, email) VALUES (gen_random_uuid(), 'secprobe@gmail.com');
+  RAISE EXCEPTION 'G2 gmail signup: FAIL (allowed)';
+EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM NOT LIKE 'DOMAIN_NOT_ALLOWED:%' THEN RAISE; END IF;
+  RAISE NOTICE 'G2 gmail rejected with prefix: PASS';
 END $$;
 
 -- ── Cleanup + rollback (nothing persists) ───────────────────────────────────────
