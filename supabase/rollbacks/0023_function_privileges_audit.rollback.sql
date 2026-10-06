@@ -54,8 +54,9 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- ── admin_fetch_users back to 0017 (extended columns, no null guard) ─────────
--- (Same return type, so plain CREATE OR REPLACE suffices.)
-CREATE OR REPLACE FUNCTION admin_fetch_users()
+-- (DROP + CREATE, exactly as 0017 does it.)
+DROP FUNCTION IF EXISTS admin_fetch_users();
+CREATE FUNCTION admin_fetch_users()
 RETURNS TABLE (
   id uuid,
   email text,
