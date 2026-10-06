@@ -55,7 +55,8 @@ function IncompleteProfileBanner() {
 }
 
 /* ── Route Guards ── */
-function RequireAuth({ children, role, allowIncomplete }: { children: React.ReactElement; role?: string | string[]; allowIncomplete?: boolean }) {
+/* Exported for unit tests (RequireAuth.test.tsx); not used elsewhere. */
+export function RequireAuth({ children, role, allowIncomplete }: { children: React.ReactElement; role?: string | string[]; allowIncomplete?: boolean }) {
   const { user, profile, loading, profileError, refreshProfile, signOut } = useAuth();
   const location = useLocation();
 
