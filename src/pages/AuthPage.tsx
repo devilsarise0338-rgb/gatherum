@@ -29,6 +29,12 @@ export default function AuthPage() {
       setLoading(false);
       return;
     }
+    // Mirrors supabase/config.toml: min 8 chars with lower+upper+digit.
+    if (mode === 'signup' && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+      toast.error('Password needs 8+ characters with upper, lower case and a number.');
+      setLoading(false);
+      return;
+    }
     if (mode === 'signup') {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) toast.error(error.message);
@@ -142,6 +148,11 @@ export default function AuthPage() {
                   {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
+              {mode === 'signup' && (
+                <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', color: 'var(--ink-muted)' }}>
+                  8+ characters with upper, lower case and a number.
+                </div>
+              )}
             </div>
 
             <button
