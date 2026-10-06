@@ -379,6 +379,15 @@ button, input, textarea, select {
    the `animate-spin` utility class referenced in several pages. */
 .animate-spin { animation: spin 0.7s linear infinite; display: inline-flex; }
 
+/* Short alias used for inline loading icons. */
+.spin { animation: spin 0.7s linear infinite; display: inline-flex; }
+
+/* Visible keyboard focus in the existing brutalist style. */
+:focus-visible {
+  outline: 3px solid var(--red);
+  outline-offset: 2px;
+}
+
 /* --- Page loader --- */
 .page-loader {
   display: flex;

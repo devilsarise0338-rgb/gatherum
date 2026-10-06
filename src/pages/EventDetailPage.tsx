@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Event, Registration } from '../types';
@@ -20,7 +20,8 @@ function fmtTime(iso: string) {
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const location = useLocation();
+  const { user, profile } = useAuth();
 
   const [event, setEvent] = useState<Event | null>(null);
   const [organizerName, setOrganizerName] = useState<string | null>(null);
@@ -66,7 +67,14 @@ export default function EventDetailPage() {
   useEffect(() => { fetchEvent(); }, [id, user]);
 
   async function handleRegister() {
-    if (!user) { navigate('/auth'); return; }
+    // Logged out: remember this event so login returns here.
+    if (!user) { navigate('/auth', { state: { from: location } }); return; }
+    // Logged in but incomplete: finish profile first, then come back.
+    if (profile && !profile.profile_completed) {
+      toast('Please complete your profile before registering.');
+      navigate('/profile', { state: { from: location, mustComplete: true } });
+      return;
+    }
     setActionLoading(true);
     const { data, error } = await supabase.rpc('register_for_event', { p_event_id: id });
     if (error) {

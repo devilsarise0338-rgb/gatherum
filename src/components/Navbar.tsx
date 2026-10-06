@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Menu, X, LogOut, User } from 'lucide-react';
 
 export default function Navbar() {
-  const { profile, signOut } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -51,7 +51,7 @@ export default function Navbar() {
               </span>
             </li>
           ))}
-          {profile ? (
+          {user ? (
             <>
               <li>
                 <span className={`nav-link ${isActive('/profile')}`} onClick={() => navigate('/profile')}>
@@ -99,7 +99,7 @@ export default function Navbar() {
               {l.label}
             </button>
           ))}
-          {profile ? (
+          {user ? (
             <>
               <button className="btn btn-ghost" onClick={() => { navigate('/profile'); setMenuOpen(false); }} style={{ justifyContent: 'flex-start' }}>
                 Profile

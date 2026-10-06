@@ -278,7 +278,7 @@ function ParallaxBlock({ style, children }: {
 ═══════════════════════════════════════════════════════ */
 export default function HomePage() {
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { user, profile } = useAuth();
   const [featuredEvents, setFeaturedEvents] = useState<Event[]>([]);
   const [stats, setStats] = useState({ events: 0, registrations: 0, organizers: 0 });
 
@@ -461,7 +461,7 @@ export default function HomePage() {
               <MagneticBtn className="btn btn-primary btn-lg" onClick={() => navigate('/events')}>
                 Explore Events <ArrowRight size={18} />
               </MagneticBtn>
-              {!profile && (
+              {!user && (
                 <MagneticBtn className="btn btn-secondary btn-lg" onClick={() => navigate('/auth')}>
                   Join Free
                 </MagneticBtn>
@@ -738,7 +738,7 @@ export default function HomePage() {
       {/* ══════════════════════════════════════════════
           SECTION 6 — CTA BANNER
       ══════════════════════════════════════════════ */}
-      {!profile && (
+      {!user && (
         <section style={{
           background: 'var(--red)', borderTop: '2px solid var(--border)',
           borderBottom: '2px solid var(--border)', padding: '6rem 0',

@@ -3,15 +3,43 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Profile } from '../types';
+import { safeRedirect } from '../lib/auth';
 import { Save, Loader2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+const BRANCHES = [
+  'Computer Science',
+  'Electronics & Communication',
+  'Electrical',
+  'Mechanical',
+  'Civil',
+  'Information Technology',
+  'Other',
+];
+
+// Optional phone: 10-digit Indian mobile, optional +91 prefix/spacing.
+function validPhone(v: string): boolean {
+  if (!v.trim()) return true;
+  return /^(\+91[\s-]?)?[6-9]\d{9}$/.test(v.replace(/[\s-]/g, ''));
+}
+
 export default function ProfilePage() {
-  const { profile, refreshProfile } = useAuth();
+  const { profile, user, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const mustComplete = (location.state as any)?.mustComplete === true;
-  const returnTo = (location.state as any)?.from?.pathname;
+  // Accepts the string paths new callers send, or the location objects
+  // older guards send; always lands back with search + hash intact.
+  const returnTo = safeRedirect((location.state as any)?.from ?? '/');
+
+  // Google metadata, used ONLY to prefill/display until the user submits.
+  const meta = (user?.user_metadata ?? {}) as {
+    full_name?: string;
+    name?: string;
+    avatar_url?: string;
+    picture?: string;
+  };
+  const metaName = meta.full_name ?? meta.name ?? '';
 
   const [form, setForm] = useState({
     full_name: '',
@@ -19,14 +47,15 @@ export default function ProfilePage() {
     branch: '',
     year_of_study: '',
     phone_number: '',
-    public_rsvp: true,
+    public_rsvp: false,
   });
   const [saving, setSaving] = useState(false);
+  const [avatarBroken, setAvatarBroken] = useState(false);
 
   useEffect(() => {
     if (profile) {
       setForm({
-        full_name: profile.full_name ?? '',
+        full_name: profile.full_name ?? metaName,
         roll_number: profile.roll_number ?? '',
         branch: profile.branch ?? '',
         year_of_study: profile.year_of_study?.toString() ?? '',
@@ -34,21 +63,26 @@ export default function ProfilePage() {
         public_rsvp: profile.public_rsvp,
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
 
-    // Validate required fields
-    if (!form.full_name.trim()) {
+    const fullName = form.full_name.trim();
+    const roll = form.roll_number.trim().toUpperCase();
+    const branch = form.branch.trim();
+    const phone = form.phone_number.trim();
+
+    if (!fullName) {
       toast.error('Full Name is required.');
       return;
     }
-    if (!form.roll_number.trim()) {
+    if (!roll) {
       toast.error('Roll Number is required.');
       return;
     }
-    if (!form.branch.trim()) {
+    if (!branch) {
       toast.error('Branch is required.');
       return;
     }
@@ -56,36 +90,47 @@ export default function ProfilePage() {
       toast.error('Year of Study is required.');
       return;
     }
+    if (!validPhone(phone)) {
+      toast.error('Enter a valid 10-digit mobile number (optional +91).');
+      return;
+    }
 
     setSaving(true);
     const payload: Partial<Profile> = {
-      full_name: form.full_name || null,
-      roll_number: form.roll_number || null,
-      branch: form.branch || null,
+      full_name: fullName,
+      roll_number: roll,
+      branch,
       year_of_study: form.year_of_study ? parseInt(form.year_of_study) : null,
-      phone_number: form.phone_number || null,
+      phone_number: phone || null,
       public_rsvp: form.public_rsvp,
-      profile_completed: !!(form.full_name && form.roll_number && form.branch && form.year_of_study),
+      profile_completed: true,
     };
 
-    const { error } = await supabase.from('profiles').update(payload).eq('id', profile!.id);
-    if (error) toast.error(error.message);
-    else {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(payload)
+      .eq('id', profile!.id)
+      .select('id');
+    if (error) {
+      toast.error(
+        (error as { code?: string }).code === '23505'
+          ? 'This roll number is already in use.'
+          : error.message
+      );
+    } else if (!data || data.length === 0) {
+      toast.error('Save failed: profile not found or not authorized.');
+    } else {
       toast.success('Profile saved!');
       await refreshProfile();
-      // If user was redirected here to complete profile, send them back
-      if (mustComplete && returnTo) {
-        navigate(returnTo, { replace: true });
-      } else if (mustComplete) {
-        navigate('/', { replace: true });
-      }
+      if (mustComplete) navigate(returnTo, { replace: true });
     }
     setSaving(false);
   }
 
   if (!profile) return <div className="page-loader"><div className="spinner" /></div>;
 
-  const generatedAvatar = `https://api.dicebear.com/7.x/shapes/svg?seed=${profile.id}`;
+  const avatarSrc = !avatarBroken ? profile.avatar_url || meta.avatar_url || meta.picture || null : null;
+  const initial = (form.full_name || profile.email || '?').trim().charAt(0).toUpperCase();
   const isIncomplete = !profile.profile_completed;
 
   return (
@@ -106,13 +151,23 @@ export default function ProfilePage() {
       <div style={{ background: 'var(--ink)', color: 'var(--white)', borderBottom: '2px solid var(--border)', padding: '2.5rem 0' }}>
         <div className="container">
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-            <img
-              src={generatedAvatar}
-              alt="Avatar"
-              className="avatar avatar-lg"
-              style={{ background: 'var(--white)' }}
-              onError={(e) => { e.currentTarget.style.display = 'none'; }}
-            />
+            {avatarSrc ? (
+              <img
+                src={avatarSrc}
+                alt="Avatar"
+                className="avatar avatar-lg"
+                style={{ background: 'var(--white)' }}
+                onError={() => setAvatarBroken(true)}
+              />
+            ) : (
+              <div
+                className="avatar avatar-lg"
+                aria-hidden
+                style={{ background: 'var(--yellow)', color: 'var(--ink)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.5rem' }}
+              >
+                {initial}
+              </div>
+            )}
             <div>
               <div className="tag" style={{ background: profile.role === 'admin' ? 'var(--red)' : profile.role === 'organizer' ? 'var(--yellow)' : 'var(--white)', marginBottom: '0.375rem' }}>
                 {profile.role}
@@ -132,20 +187,20 @@ export default function ProfilePage() {
             </h2>
 
             <div className="form-group">
-              <label className="label">Full Name <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input className="input" placeholder="Rahul Sharma" value={form.full_name} required
+              <label className="label" htmlFor="profile-name">Full Name <span style={{ color: 'var(--red)' }}>*</span></label>
+              <input id="profile-name" className="input" placeholder="Rahul Sharma" value={form.full_name} required
                 onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} />
             </div>
 
             <div className="resp-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.25rem' }}>
               <div>
-                <label className="label">Roll Number <span style={{ color: 'var(--red)' }}>*</span></label>
-                <input className="input" placeholder="2021BTECH001" value={form.roll_number} required
+                <label className="label" htmlFor="profile-roll">Roll Number <span style={{ color: 'var(--red)' }}>*</span></label>
+                <input id="profile-roll" className="input" placeholder="2021BTECH001" value={form.roll_number} required
                   onChange={e => setForm(f => ({ ...f, roll_number: e.target.value }))} />
               </div>
               <div>
-                <label className="label">Year of Study <span style={{ color: 'var(--red)' }}>*</span></label>
-                <select className="select" value={form.year_of_study} required
+                <label className="label" htmlFor="profile-year">Year of Study <span style={{ color: 'var(--red)' }}>*</span></label>
+                <select id="profile-year" className="select" value={form.year_of_study} required
                   onChange={e => setForm(f => ({ ...f, year_of_study: e.target.value }))}>
                   <option value="">Select year</option>
                   {[1, 2, 3, 4].map(y => <option key={y} value={y}>Year {y}</option>)}
@@ -154,14 +209,28 @@ export default function ProfilePage() {
             </div>
 
             <div className="form-group">
-              <label className="label">Branch <span style={{ color: 'var(--red)' }}>*</span></label>
-              <input className="input" placeholder="Computer Science Engineering" value={form.branch} required
-                onChange={e => setForm(f => ({ ...f, branch: e.target.value }))} />
+              <label className="label" htmlFor="profile-branch">Branch <span style={{ color: 'var(--red)' }}>*</span></label>
+              <select
+                id="profile-branch"
+                className="select"
+                value={BRANCHES.includes(form.branch) ? form.branch : form.branch ? '__custom' : ''}
+                required
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v !== '__custom') setForm(f => ({ ...f, branch: v }));
+                }}
+              >
+                <option value="">Select branch</option>
+                {BRANCHES.map(b => <option key={b} value={b}>{b}</option>)}
+                {form.branch && !BRANCHES.includes(form.branch) && (
+                  <option value="__custom">{form.branch} (current)</option>
+                )}
+              </select>
             </div>
 
             <div className="form-group">
-              <label className="label">Phone Number</label>
-              <input className="input" type="tel" placeholder="+91 9876543210" value={form.phone_number}
+              <label className="label" htmlFor="profile-phone">Phone Number</label>
+              <input id="profile-phone" className="input" type="tel" placeholder="+91 9876543210" value={form.phone_number}
                 onChange={e => setForm(f => ({ ...f, phone_number: e.target.value }))} />
             </div>
 
@@ -175,7 +244,7 @@ export default function ProfilePage() {
             </div>
 
             <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={saving}>
-              {saving ? <Loader2 size={16} /> : <Save size={16} />}
+              {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
               {isIncomplete ? 'Complete Profile' : 'Save Profile'}
             </button>
           </div>

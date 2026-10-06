@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { AnimatePresence, motion } from 'motion/react';
@@ -18,10 +18,45 @@ import OrganizerEventWizard from './pages/OrganizerEventWizard';
 import CheckInPage from './pages/CheckInPage';
 import AdminDashboard from './pages/AdminDashboard';
 import ProfilePage from './pages/ProfilePage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+import { safeRedirect } from './lib/auth';
+
+// Dismissible nudge for signed-in users who never finished their profile.
+// Guarded routes force /profile; public pages (Home) show this instead.
+function IncompleteProfileBanner() {
+  const { profile } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [dismissed, setDismissed] = React.useState(false);
+
+  if (!profile || profile.profile_completed || dismissed) return null;
+  if (location.pathname.startsWith('/profile') || location.pathname.startsWith('/auth')) return null;
+
+  return (
+    <div style={{
+      background: 'var(--yellow)', color: 'var(--ink)',
+      borderBottom: '2px solid var(--border)',
+      padding: '0.625rem 1rem', display: 'flex', alignItems: 'center',
+      justifyContent: 'center', gap: '0.75rem', fontWeight: 600, fontSize: '0.875rem',
+      flexWrap: 'wrap',
+    }}>
+      <span>Finish your profile to register for events.</span>
+      <button className="btn btn-dark btn-sm" onClick={() => navigate('/profile')}>Complete profile</button>
+      <button
+        className="btn btn-ghost btn-sm"
+        onClick={() => setDismissed(true)}
+        aria-label="Dismiss"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
 
 /* ── Route Guards ── */
 function RequireAuth({ children, role, allowIncomplete }: { children: React.ReactElement; role?: string | string[]; allowIncomplete?: boolean }) {
-  const { user, profile, loading } = useAuth();
+  const { user, profile, loading, profileError, refreshProfile, signOut } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -34,9 +69,22 @@ function RequireAuth({ children, role, allowIncomplete }: { children: React.Reac
 
   if (!user) return <Navigate to="/auth" state={{ from: location }} replace />;
 
-  // Never render guarded pages blind: no profile yet means still resolving
-  // (failed fetches sign out via AuthContext, landing back on /auth).
+  // Never render guarded pages blind: no profile yet means still resolving.
+  // On permanent failure show Retry/Sign out instead of hanging or leaking.
   if (!profile) {
+    if (profileError) {
+      return (
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', background: 'var(--off-white)', padding: '1rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '3rem' }}>⚠️</div>
+          <h2 style={{ fontWeight: 700 }}>Couldn't load your profile</h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--ink-muted)', maxWidth: 440 }}>{profileError}</p>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button className="btn btn-primary btn-sm" onClick={() => refreshProfile()}>Retry</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => signOut()}>Sign out</button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="page-loader">
         <div className="spinner" />
@@ -86,11 +134,12 @@ function PageWrapper({ children }: { children: React.ReactNode }) {
 function RootRoutes() {
   const { session } = useAuth();
   const location = useLocation();
-  const isAuth = location.pathname === '/auth';
+  const isAuth = location.pathname === '/auth' || location.pathname.startsWith('/auth/');
 
   return (
     <>
       {!isAuth && <Navbar />}
+      <IncompleteProfileBanner />
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
           {/* Public */}
@@ -98,7 +147,18 @@ function RootRoutes() {
           <Route path="/events" element={<PageWrapper><EventsPage /></PageWrapper>} />
           <Route path="/archives" element={<PageWrapper><ArchivesPage /></PageWrapper>} />
           <Route path="/events/:id" element={<PageWrapper><EventDetailPage /></PageWrapper>} />
-          <Route path="/auth" element={session ? <Navigate to="/" replace /> : <PageWrapper><AuthPage /></PageWrapper>} />
+          <Route
+            path="/auth"
+            element={
+              session ? (
+                <Navigate to={safeRedirect((location.state as { from?: unknown } | null)?.from)} replace />
+              ) : (
+                <PageWrapper><AuthPage /></PageWrapper>
+              )
+            }
+          />
+          <Route path="/auth/callback" element={<AuthCallbackPage />} />
+          <Route path="/auth/reset" element={<ResetPasswordPage />} />
 
           {/* Student */}
           <Route path="/student" element={<RequireAuth role={['student', 'organizer', 'admin']}><PageWrapper><StudentDashboard /></PageWrapper></RequireAuth>} />
