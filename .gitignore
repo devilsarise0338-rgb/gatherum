@@ -20,6 +20,9 @@ _env
 # Supabase local temp files
 supabase/.temp/
 
+# Local database backups (may contain production data — never commit)
+backups/
+
 # Dev/test artifacts
 fix_test.cjs
 full_code.md
