@@ -11,6 +11,8 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public
   REVOKE ALL ON FUNCTIONS FROM anon, authenticated, PUBLIC;
 ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
   REVOKE ALL ON FUNCTIONS FROM anon, authenticated, PUBLIC;
+ALTER DEFAULT PRIVILEGES FOR ROLE supabase_admin IN SCHEMA public
+  REVOKE ALL ON FUNCTIONS FROM anon, authenticated, PUBLIC;
 
 -- ── 2. Re-lock the 10 authenticated RPCs (exact live signatures) ─────────────
 REVOKE ALL ON FUNCTION register_for_event(uuid) FROM PUBLIC, anon;
@@ -191,22 +193,22 @@ GRANT EXECUTE ON FUNCTION check_in_by_ticket(text, uuid) TO authenticated;
 CREATE OR REPLACE FUNCTION get_public_platform_stats()
 RETURNS TABLE (total_events bigint, total_registrations bigint, total_organizers bigint) AS $$
   SELECT
-    (SELECT count(*) FROM events WHERE is_unpublished = false AND is_archived = false),
-    (SELECT count(*) FROM registrations WHERE status IN ('registered', 'attended')),
-    (SELECT count(*) FROM profiles WHERE role = 'organizer');
-$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public, pg_temp;
+    (SELECT count(*) FROM public.events WHERE is_unpublished = false AND is_archived = false),
+    (SELECT count(*) FROM public.registrations WHERE status IN ('registered', 'attended')),
+    (SELECT count(*) FROM public.profiles WHERE role = 'organizer');
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
 
 -- Organizer summary: name + avatar ONLY, and only for PUBLIC, non-archived
 -- events. Draft-event owners lose the card (they already have the edit UI).
 CREATE OR REPLACE FUNCTION get_event_organizer_summary(p_event_id uuid)
 RETURNS TABLE (full_name text, avatar_url text) AS $$
   SELECT p.full_name, p.avatar_url
-  FROM events e
-  JOIN profiles p ON p.id = e.organizer_id
+  FROM public.events e
+  JOIN public.profiles p ON p.id = e.organizer_id
   WHERE e.id = p_event_id
     AND e.is_unpublished = false
     AND e.is_archived = false;
-$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = public, pg_temp;
+$$ LANGUAGE sql SECURITY DEFINER STABLE SET search_path = '';
 
 REVOKE ALL ON FUNCTION get_public_platform_stats() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION get_event_organizer_summary(uuid) FROM PUBLIC, anon;
